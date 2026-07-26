@@ -154,7 +154,7 @@ export function UploadForm({ token }: { token: string }) {
               {dragActive ? "שחרר כאן..." : "גרור לכאן או לחץ לבחירת קובץ"}
             </div>
             <div className="text-xs text-navy-600 mt-2">
-              PDF, תמונה, או כל קובץ אחר (עד 10MB)
+              מומלץ: PDF · אפשר גם תמונה / Word / Excel (עד 10MB)
             </div>
           </div>
         )}
@@ -162,6 +162,7 @@ export function UploadForm({ token }: { token: string }) {
           ref={inputRef}
           type="file"
           className="hidden"
+          accept=".pdf,application/pdf,image/*,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx"
           onChange={(e) => {
             setFile(e.target.files?.[0] ?? null);
             setError(null);

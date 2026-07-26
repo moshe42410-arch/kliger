@@ -36,11 +36,27 @@ export async function POST(
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    // Preserve extension (e.g. .pdf) even when the original name is Hebrew.
+    const extMatch = file.name.match(/(\.[a-zA-Z0-9]{1,10})$/);
+    const ext = extMatch ? extMatch[1].toLowerCase() : "";
+    const base = file.name
+      .replace(/\.[a-zA-Z0-9]{1,10}$/, "")
+      .replace(/[^a-zA-Z0-9._-]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "") || "file";
     const id = uuid();
-    const filename = `${id}__${safeName}`;
+    const filename = `${id}__${base}${ext}`;
 
-    const stored = await putUpload(filename, buffer, file.type || undefined);
+    // Browsers sometimes send an empty MIME type for PDF — normalize by extension.
+    let contentType = file.type || undefined;
+    if (!contentType || contentType === "application/octet-stream") {
+      if (ext === ".pdf") contentType = "application/pdf";
+      else if (ext === ".png") contentType = "image/png";
+      else if (ext === ".jpg" || ext === ".jpeg") contentType = "image/jpeg";
+      else if (ext === ".webp") contentType = "image/webp";
+    }
+
+    const stored = await putUpload(filename, buffer, contentType);
     // Store the raw key: filename in dev (readable by getBlobBytes → local fs),
     // full URL in prod (fetched by getBlobBytes → HTTPS).
     const storedRef = stored.key;
@@ -48,7 +64,7 @@ export async function POST(
     const parsedReminder = parseReminder(reminder);
     await sql`
       INSERT INTO uploads (id, owner_id, reminder_id, filename, original_name, mime_type, size)
-      VALUES (${id}, ${parsedReminder.ownerId}, ${reminder.id}, ${storedRef}, ${file.name}, ${file.type}, ${file.size})
+      VALUES (${id}, ${parsedReminder.ownerId}, ${reminder.id}, ${storedRef}, ${file.name}, ${contentType || file.type || null}, ${file.size})
     `;
 
     await setReminderStatus(reminder.id, "waiting_advisor");
@@ -71,7 +87,7 @@ export async function POST(
         type: "upload",
         uploadId: id,
         filename: file.name,
-        mimeType: file.type,
+        mimeType: contentType || file.type,
         size: file.size,
       },
     });
