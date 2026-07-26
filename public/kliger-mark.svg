@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="KLIGER">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a1932"/>
+      <stop offset="55%" stop-color="#0e2043"/>
+      <stop offset="100%" stop-color="#050e22"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f4d47c"/>
+      <stop offset="45%" stop-color="#d9a825"/>
+      <stop offset="100%" stop-color="#a67912"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="120" height="120" rx="18" fill="url(#bg)"/>
+  <circle cx="60" cy="60" r="42" fill="none" stroke="url(#gold)" stroke-width="1" opacity="0.7"/>
+  <circle cx="60" cy="60" r="36" fill="none" stroke="url(#gold)" stroke-width="0.4" opacity="0.35"/>
+
+  <text x="60" y="80" text-anchor="middle" font-family="'Cormorant Garamond', 'Bellefair', serif"
+        font-weight="500" font-size="62" letter-spacing="1" fill="url(#gold)">K</text>
+</svg>

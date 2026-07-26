@@ -1,0 +1,60 @@
+import { NextRequest, NextResponse } from "next/server";
+import { v4 as uuid } from "uuid";
+import {
+  getSql,
+  parseClient,
+  type ClientRow,
+  type ReminderChannel,
+} from "@/lib/db";
+import { getCurrentOwnerId } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  try {
+    const ownerId = await getCurrentOwnerId();
+    const sql = getSql();
+    const rows = await sql`
+      SELECT * FROM clients WHERE owner_id = ${ownerId} ORDER BY created_at DESC
+    `;
+    return NextResponse.json((rows as ClientRow[]).map(parseClient));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: msg }, { status: 401 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const ownerId = await getCurrentOwnerId();
+    const body = await req.json();
+    const name = String(body.name || "").trim();
+    const emails = (Array.isArray(body.emails) ? body.emails : [])
+      .map((x: unknown) => String(x || "").trim())
+      .filter(Boolean);
+    const phones = (Array.isArray(body.phones) ? body.phones : [])
+      .map((x: unknown) => String(x || "").trim())
+      .filter(Boolean);
+    const channel = (body.reminderChannel || "email") as ReminderChannel;
+
+    if (!name) {
+      return NextResponse.json({ error: "שם הלקוח חובה" }, { status: 400 });
+    }
+    if (!["email", "phone", "both"].includes(channel)) {
+      return NextResponse.json({ error: "ערוץ תזכורת לא תקין" }, { status: 400 });
+    }
+
+    const sql = getSql();
+    const id = uuid();
+    await sql`
+      INSERT INTO clients (id, owner_id, name, emails, phones, reminder_channel)
+      VALUES (${id}, ${ownerId}, ${name}, ${JSON.stringify(emails)}, ${JSON.stringify(phones)}, ${channel})
+    `;
+
+    const rows = await sql`SELECT * FROM clients WHERE id = ${id}`;
+    return NextResponse.json(parseClient((rows as ClientRow[])[0]));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
