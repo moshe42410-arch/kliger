@@ -35,8 +35,44 @@ export function isEmailConfigured(): boolean {
 }
 
 /**
+ * Refresh a Google access token from a stored refresh_token.
+ * Surfaces clear Hebrew errors when Client Secret / token are wrong.
+ */
+async function refreshGoogleAccessToken(refreshToken: string): Promise<string> {
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID!,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    if (text.includes("invalid_client")) {
+      throw new Error(
+        "GOOGLE_CLIENT_SECRET ב-Vercel לא תואם ל-Google Cloud. עדכן את הסוד ועשה Redeploy, ואז חבר מחדש את Gmail בהגדרות."
+      );
+    }
+    if (text.includes("invalid_grant")) {
+      throw new Error(
+        "חיבור ה-Gmail פג תוקף. לך להגדרות → נתק → חבר מחדש עם Google."
+      );
+    }
+    throw new Error(`רענון טוקן Google נכשל: ${text.slice(0, 200)}`);
+  }
+  const json = JSON.parse(text) as { access_token?: string };
+  if (!json.access_token) {
+    throw new Error("Google לא החזיר access_token");
+  }
+  return json.access_token;
+}
+
+/**
  * מייצר transporter פר־משתמש, על סמך refresh_token של הגוגל שלו.
- * אם אין למשתמש חיבור — נופל ל־SMTP הגלובלי (dev בלבד) או מחזיר null.
+ * אם אין למשתמש חיבור — נופל ל־SMTP הגלובלי (רק אם ALLOW_SMTP_FALLBACK=1) או מחזיר null.
  */
 async function getTransporterForUser(user: User | null): Promise<{
   transporter: Transporter | null;
@@ -52,6 +88,10 @@ async function getTransporterForUser(user: User | null): Promise<{
       | { gmail_refresh_token: string | null }
       | undefined;
     if (secret?.gmail_refresh_token) {
+      // Refresh explicitly so we fail with a clear message (not cryptic SMTP 535).
+      const accessToken = await refreshGoogleAccessToken(
+        secret.gmail_refresh_token
+      );
       const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: {
@@ -60,6 +100,7 @@ async function getTransporterForUser(user: User | null): Promise<{
           clientId: process.env.GOOGLE_CLIENT_ID!,
           clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
           refreshToken: secret.gmail_refresh_token,
+          accessToken,
         },
       });
       return {
@@ -70,13 +111,8 @@ async function getTransporterForUser(user: User | null): Promise<{
     }
   }
 
-  // SMTP fallback only when Google OAuth is NOT configured at all,
-  // or when explicitly allowed. Otherwise a broken SMTP silently masks
-  // the real issue ("user has not connected Gmail").
-  const allowSmtpFallback =
-    process.env.ALLOW_SMTP_FALLBACK === "1" || !googleOAuthConfigured();
-
-  if (allowSmtpFallback && fallbackSmtpConfigured()) {
+  // SMTP only when explicitly allowed (never silently mask a broken Gmail setup).
+  if (process.env.ALLOW_SMTP_FALLBACK === "1" && fallbackSmtpConfigured()) {
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST!,
       port: Number(process.env.SMTP_PORT ?? 465),
@@ -123,8 +159,23 @@ export async function sendEmail(opts: SendEmailOptions): Promise<{
 }> {
   const sql = getSql();
   const user = opts.fromUserId ? await getUserById(opts.fromUserId) : null;
-  const { transporter, fromEmail: defaultFromEmail } =
-    await getTransporterForUser(user);
+  const logId = uuid();
+  const validRecipients = opts.to.filter((x) => x && x.includes("@"));
+
+  let transporter: Transporter | null = null;
+  let defaultFromEmail = "";
+  try {
+    const t = await getTransporterForUser(user);
+    transporter = t.transporter;
+    defaultFromEmail = t.fromEmail;
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    await sql`
+      INSERT INTO email_log (id, owner_id, reminder_id, client_id, to_addresses, subject, body, status, error)
+      VALUES (${logId}, ${user?.id ?? null}, ${opts.reminderId ?? null}, ${opts.clientId ?? null}, ${JSON.stringify(validRecipients)}, ${opts.subject}, ${opts.body}, 'error', ${errMsg})
+    `;
+    return { ok: false, error: errMsg };
+  }
 
   const fromName =
     opts.fromNameOverride ||
@@ -135,14 +186,11 @@ export async function sendEmail(opts: SendEmailOptions): Promise<{
     "KLIGER";
   const fromEmail = opts.fromEmailOverride || defaultFromEmail;
 
-  const logId = uuid();
-  const validRecipients = opts.to.filter((x) => x && x.includes("@"));
-
   const noTransport = !transporter || !fromEmail;
   if (noTransport || validRecipients.length === 0) {
     const errMsg = noTransport
       ? user
-        ? "המשתמש טרם חיבר את חשבון הגוגל שלו"
+        ? "המשתמש טרם חיבר את חשבון הגוגל שלו. לך להגדרות → חיבור למייל."
         : "SMTP / Gmail לא מוגדרים"
       : "אין נמענים";
     await sql`
