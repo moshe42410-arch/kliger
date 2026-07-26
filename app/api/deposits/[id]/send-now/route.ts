@@ -59,9 +59,12 @@ export async function POST(
     }
 
     if (sent === 0) {
+      const msg = errors[0] || "שליחה נכשלה";
+      const needsGmail =
+        msg.includes("גוגל") || msg.includes("Gmail") || msg.includes("SMTP");
       return NextResponse.json(
-        { error: errors[0] || "שליחה נכשלה" },
-        { status: 500 }
+        { error: msg },
+        { status: needsGmail ? 400 : 500 }
       );
     }
     return NextResponse.json({ ok: true, sent, errors });

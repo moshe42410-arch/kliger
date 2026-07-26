@@ -70,7 +70,13 @@ async function getTransporterForUser(user: User | null): Promise<{
     }
   }
 
-  if (fallbackSmtpConfigured()) {
+  // SMTP fallback only when Google OAuth is NOT configured at all,
+  // or when explicitly allowed. Otherwise a broken SMTP silently masks
+  // the real issue ("user has not connected Gmail").
+  const allowSmtpFallback =
+    process.env.ALLOW_SMTP_FALLBACK === "1" || !googleOAuthConfigured();
+
+  if (allowSmtpFallback && fallbackSmtpConfigured()) {
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST!,
       port: Number(process.env.SMTP_PORT ?? 465),
