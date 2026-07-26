@@ -10,12 +10,10 @@ export interface EmailAttachment {
 }
 
 /**
- * במודל החדש כל שליחת מייל נעשית ממייל הגוגל של היועץ המחובר, דרך OAuth2.
- * דורש 3 משתני סביבה גלובליים: GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET + GOOGLE_REDIRECT_URI
- * ולכל user: gmail_email + gmail_refresh_token (מתמלאים אחרי OAuth flow).
- *
- * Fallback (dev בלבד): אם מוגדרים SMTP_HOST/SMTP_USER/SMTP_PASSWORD בסביבה,
- * ואין למשתמש חיבור גוגל — נשתמש ב-SMTP הגלובלי (רק לנוחות פיתוח).
+ * Email sending:
+ * 1) Preferred: Gmail API with the advisor's OAuth refresh_token
+ *    (SMTP+OAuth via nodemailer is unreliable / breaks with invalid_client)
+ * 2) Optional: SMTP fallback only when ALLOW_SMTP_FALLBACK=1
  */
 
 function googleOAuthConfigured(): boolean {
@@ -34,10 +32,6 @@ export function isEmailConfigured(): boolean {
   return googleOAuthConfigured() || fallbackSmtpConfigured();
 }
 
-/**
- * Refresh a Google access token from a stored refresh_token.
- * Surfaces clear Hebrew errors when Client Secret / token are wrong.
- */
 async function refreshGoogleAccessToken(refreshToken: string): Promise<string> {
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -53,7 +47,9 @@ async function refreshGoogleAccessToken(refreshToken: string): Promise<string> {
   if (!res.ok) {
     if (text.includes("invalid_client")) {
       throw new Error(
-        "GOOGLE_CLIENT_SECRET ב-Vercel לא תואם ל-Google Cloud. עדכן את הסוד ועשה Redeploy, ואז חבר מחדש את Gmail בהגדרות."
+        "GOOGLE_CLIENT_SECRET ב-Vercel לא תואם ל-Google Cloud. " +
+          "שים ב-Vercel את הסוד הישן שמסתיים ב-QL9s (זה שעובד עם החיבור הנוכחי), " +
+          "או צור Secret חדש + חבר Gmail מחדש אחרי Redeploy."
       );
     }
     if (text.includes("invalid_grant")) {
@@ -70,70 +66,120 @@ async function refreshGoogleAccessToken(refreshToken: string): Promise<string> {
   return json.access_token;
 }
 
-/**
- * מייצר transporter פר־משתמש, על סמך refresh_token של הגוגל שלו.
- * אם אין למשתמש חיבור — נופל ל־SMTP הגלובלי (רק אם ALLOW_SMTP_FALLBACK=1) או מחזיר null.
- */
-async function getTransporterForUser(user: User | null): Promise<{
-  transporter: Transporter | null;
+function encodeSubject(subject: string): string {
+  return `=?UTF-8?B?${Buffer.from(subject, "utf8").toString("base64")}?=`;
+}
+
+function toBase64Url(buf: Buffer): string {
+  return buf
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+async function sendViaGmailApi(opts: {
+  accessToken: string;
+  fromName: string;
   fromEmail: string;
-  usingFallback: boolean;
-}> {
-  if (user && user.gmailEmail && googleOAuthConfigured()) {
-    const sql = getSql();
-    const rows = await sql`
-      SELECT gmail_refresh_token FROM users WHERE id = ${user.id}
-    `;
-    const secret = rows[0] as
-      | { gmail_refresh_token: string | null }
-      | undefined;
-    if (secret?.gmail_refresh_token) {
-      // Refresh explicitly so we fail with a clear message (not cryptic SMTP 535).
-      const accessToken = await refreshGoogleAccessToken(
-        secret.gmail_refresh_token
+  to: string[];
+  subject: string;
+  html: string;
+  text: string;
+  attachments?: EmailAttachment[];
+}): Promise<void> {
+  const boundary = `kliger_${uuid().replace(/-/g, "")}`;
+  const hasAttachments = Boolean(opts.attachments?.length);
+
+  const headers = [
+    `From: "${opts.fromName.replace(/"/g, "")}" <${opts.fromEmail}>`,
+    `To: ${opts.to.join(", ")}`,
+    `Subject: ${encodeSubject(opts.subject)}`,
+    "MIME-Version: 1.0",
+  ];
+
+  let rawBody: string;
+  if (!hasAttachments) {
+    headers.push(`Content-Type: text/html; charset="UTF-8"`);
+    rawBody = `${headers.join("\r\n")}\r\n\r\n${opts.html}`;
+  } else {
+    headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+    const parts: string[] = [];
+    parts.push(
+      `--${boundary}\r\n` +
+        `Content-Type: text/html; charset="UTF-8"\r\n` +
+        `Content-Transfer-Encoding: 7bit\r\n\r\n` +
+        `${opts.html}\r\n`
+    );
+    for (const att of opts.attachments || []) {
+      let content: Buffer | null = null;
+      if (att.content) {
+        content = Buffer.isBuffer(att.content)
+          ? att.content
+          : Buffer.from(String(att.content));
+      } else if (att.path) {
+        try {
+          const { getBlobBytes } = await import("./blob-storage");
+          content = await getBlobBytes(att.path);
+        } catch {
+          content = null;
+        }
+      }
+      if (!content) continue;
+      const mime = att.contentType || "application/octet-stream";
+      const filename = att.filename || "file";
+      parts.push(
+        `--${boundary}\r\n` +
+          `Content-Type: ${mime}; name="${filename}"\r\n` +
+          `Content-Disposition: attachment; filename="${filename}"\r\n` +
+          `Content-Transfer-Encoding: base64\r\n\r\n` +
+          `${content.toString("base64")}\r\n`
       );
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          type: "OAuth2",
-          user: user.gmailEmail,
-          clientId: process.env.GOOGLE_CLIENT_ID!,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-          refreshToken: secret.gmail_refresh_token,
-          accessToken,
-        },
-      });
-      return {
-        transporter,
-        fromEmail: user.gmailEmail,
-        usingFallback: false,
-      };
     }
+    parts.push(`--${boundary}--`);
+    rawBody = `${headers.join("\r\n")}\r\n\r\n${parts.join("")}`;
   }
 
-  // SMTP only when explicitly allowed (never silently mask a broken Gmail setup).
-  if (process.env.ALLOW_SMTP_FALLBACK === "1" && fallbackSmtpConfigured()) {
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST!,
-      port: Number(process.env.SMTP_PORT ?? 465),
-      secure: (process.env.SMTP_SECURE ?? "true") === "true",
-      auth: {
-        user: process.env.SMTP_USER!,
-        pass: process.env.SMTP_PASSWORD!,
+  const res = await fetch(
+    "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${opts.accessToken}`,
+        "Content-Type": "application/json",
       },
-    });
-    return {
-      transporter,
-      fromEmail:
-        process.env.SMTP_FROM_EMAIL ||
-        process.env.SMTP_USER ||
-        user?.email ||
-        "noreply@kliger.local",
-      usingFallback: true,
-    };
+      body: JSON.stringify({ raw: toBase64Url(Buffer.from(rawBody, "utf8")) }),
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`שליחת Gmail API נכשלה (${res.status}): ${text.slice(0, 300)}`);
   }
+}
 
-  return { transporter: null, fromEmail: "", usingFallback: false };
+async function getSmtpTransporter(): Promise<{
+  transporter: Transporter;
+  fromEmail: string;
+} | null> {
+  if (process.env.ALLOW_SMTP_FALLBACK !== "1" || !fallbackSmtpConfigured()) {
+    return null;
+  }
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST!,
+    port: Number(process.env.SMTP_PORT ?? 465),
+    secure: (process.env.SMTP_SECURE ?? "true") === "true",
+    auth: {
+      user: process.env.SMTP_USER!,
+      pass: process.env.SMTP_PASSWORD!,
+    },
+  });
+  return {
+    transporter,
+    fromEmail:
+      process.env.SMTP_FROM_EMAIL ||
+      process.env.SMTP_USER ||
+      "noreply@kliger.local",
+  };
 }
 
 export interface SendEmailOptions {
@@ -145,11 +191,8 @@ export interface SendEmailOptions {
   attachments?: EmailAttachment[];
   brandName?: string | null;
   brandSubtitle?: string | null;
-  /** משתמש שממנו לשלוח את המייל. אם לא הועבר — ייכשל (אין ברירת מחדל). */
   fromUserId?: string | null;
-  /** From name — ברירת מחדל: שם החברה של המשתמש, ואם אין — שמו. */
   fromNameOverride?: string | null;
-  /** From email — לרוב לא משנים; ברירת מחדל = gmailEmail של המשתמש. */
   fromEmailOverride?: string | null;
 }
 
@@ -162,21 +205,6 @@ export async function sendEmail(opts: SendEmailOptions): Promise<{
   const logId = uuid();
   const validRecipients = opts.to.filter((x) => x && x.includes("@"));
 
-  let transporter: Transporter | null = null;
-  let defaultFromEmail = "";
-  try {
-    const t = await getTransporterForUser(user);
-    transporter = t.transporter;
-    defaultFromEmail = t.fromEmail;
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    await sql`
-      INSERT INTO email_log (id, owner_id, reminder_id, client_id, to_addresses, subject, body, status, error)
-      VALUES (${logId}, ${user?.id ?? null}, ${opts.reminderId ?? null}, ${opts.clientId ?? null}, ${JSON.stringify(validRecipients)}, ${opts.subject}, ${opts.body}, 'error', ${errMsg})
-    `;
-    return { ok: false, error: errMsg };
-  }
-
   const fromName =
     opts.fromNameOverride ||
     opts.brandName ||
@@ -184,21 +212,6 @@ export async function sendEmail(opts: SendEmailOptions): Promise<{
     user?.name ||
     process.env.SMTP_FROM_NAME ||
     "KLIGER";
-  const fromEmail = opts.fromEmailOverride || defaultFromEmail;
-
-  const noTransport = !transporter || !fromEmail;
-  if (noTransport || validRecipients.length === 0) {
-    const errMsg = noTransport
-      ? user
-        ? "המשתמש טרם חיבר את חשבון הגוגל שלו. לך להגדרות → חיבור למייל."
-        : "SMTP / Gmail לא מוגדרים"
-      : "אין נמענים";
-    await sql`
-      INSERT INTO email_log (id, owner_id, reminder_id, client_id, to_addresses, subject, body, status, error)
-      VALUES (${logId}, ${user?.id ?? null}, ${opts.reminderId ?? null}, ${opts.clientId ?? null}, ${JSON.stringify(validRecipients)}, ${opts.subject}, ${opts.body}, 'skipped', ${errMsg})
-    `;
-    return { ok: false, error: errMsg };
-  }
 
   const appUrl = (process.env.APP_URL || "").replace(/\/$/, "");
   const advisorLogoUrl =
@@ -208,25 +221,80 @@ export async function sendEmail(opts: SendEmailOptions): Promise<{
         : `${appUrl}/api/users/${user.id}/logo/image?v=${encodeURIComponent(user.logoFilename)}`
       : null;
 
-  try {
-    await transporter!.sendMail({
-      from: `"${fromName}" <${fromEmail}>`,
-      to: validRecipients.join(", "),
-      subject: opts.subject,
-      html: htmlWrap(opts.body, {
-        advisorName: fromName,
-        advisorLogoUrl,
-        advisorSubtitle: opts.brandSubtitle ?? user?.phone ?? null,
-      }),
-      text: opts.body.replace(/<[^>]+>/g, ""),
-      attachments: opts.attachments,
-    });
+  const html = htmlWrap(opts.body, {
+    advisorName: fromName,
+    advisorLogoUrl,
+    advisorSubtitle: opts.brandSubtitle ?? user?.phone ?? null,
+  });
+  const text = opts.body.replace(/<[^>]+>/g, "");
 
+  try {
+    // --- Path 1: Gmail API (OAuth) ---
+    if (user && user.gmailEmail && googleOAuthConfigured()) {
+      const rows = await sql`
+        SELECT gmail_refresh_token FROM users WHERE id = ${user.id}
+      `;
+      const secret = rows[0] as
+        | { gmail_refresh_token: string | null }
+        | undefined;
+      if (secret?.gmail_refresh_token) {
+        if (validRecipients.length === 0) {
+          const errMsg = "אין נמענים";
+          await sql`
+            INSERT INTO email_log (id, owner_id, reminder_id, client_id, to_addresses, subject, body, status, error)
+            VALUES (${logId}, ${user.id}, ${opts.reminderId ?? null}, ${opts.clientId ?? null}, ${JSON.stringify(validRecipients)}, ${opts.subject}, ${opts.body}, 'skipped', ${errMsg})
+          `;
+          return { ok: false, error: errMsg };
+        }
+        const accessToken = await refreshGoogleAccessToken(
+          secret.gmail_refresh_token
+        );
+        const fromEmail = opts.fromEmailOverride || user.gmailEmail;
+        await sendViaGmailApi({
+          accessToken,
+          fromName,
+          fromEmail,
+          to: validRecipients,
+          subject: opts.subject,
+          html,
+          text,
+          attachments: opts.attachments,
+        });
+        await sql`
+          INSERT INTO email_log (id, owner_id, reminder_id, client_id, to_addresses, subject, body, status)
+          VALUES (${logId}, ${user.id}, ${opts.reminderId ?? null}, ${opts.clientId ?? null}, ${JSON.stringify(validRecipients)}, ${opts.subject}, ${opts.body}, 'sent')
+        `;
+        return { ok: true };
+      }
+    }
+
+    // --- Path 2: SMTP fallback (explicit only) ---
+    const smtp = await getSmtpTransporter();
+    if (smtp && validRecipients.length > 0) {
+      const fromEmail = opts.fromEmailOverride || smtp.fromEmail;
+      await smtp.transporter.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
+        to: validRecipients.join(", "),
+        subject: opts.subject,
+        html,
+        text,
+        attachments: opts.attachments,
+      });
+      await sql`
+        INSERT INTO email_log (id, owner_id, reminder_id, client_id, to_addresses, subject, body, status)
+        VALUES (${logId}, ${user?.id ?? null}, ${opts.reminderId ?? null}, ${opts.clientId ?? null}, ${JSON.stringify(validRecipients)}, ${opts.subject}, ${opts.body}, 'sent')
+      `;
+      return { ok: true };
+    }
+
+    const errMsg = user
+      ? "המשתמש טרם חיבר את חשבון הגוגל שלו. לך להגדרות → חיבור למייל."
+      : "SMTP / Gmail לא מוגדרים";
     await sql`
-      INSERT INTO email_log (id, owner_id, reminder_id, client_id, to_addresses, subject, body, status)
-      VALUES (${logId}, ${user?.id ?? null}, ${opts.reminderId ?? null}, ${opts.clientId ?? null}, ${JSON.stringify(validRecipients)}, ${opts.subject}, ${opts.body}, 'sent')
+      INSERT INTO email_log (id, owner_id, reminder_id, client_id, to_addresses, subject, body, status, error)
+      VALUES (${logId}, ${user?.id ?? null}, ${opts.reminderId ?? null}, ${opts.clientId ?? null}, ${JSON.stringify(validRecipients)}, ${opts.subject}, ${opts.body}, 'skipped', ${errMsg})
     `;
-    return { ok: true };
+    return { ok: false, error: errMsg };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await sql`
@@ -243,13 +311,6 @@ interface WrapOptions {
   advisorSubtitle: string | null;
 }
 
-/**
- * מבנה המייל:
- * — הלוגו של היועץ + השם שלו בראש המייל, גדולים, במרכז.
- * — תוכן המייל בקוביה לבנה נקייה.
- * — בכל הפוטר: הערה עדינה "Powered by KLIGER" — טפל.
- * מיילים HTML חייבים inline styles + <table> לתמיכה טובה בכל לקוחות המייל.
- */
 function htmlWrap(body: string, opts: WrapOptions): string {
   const paragraphs = body.split(/\n{2,}/).map((para) => {
     const linkified = linkifyUrls(para);
