@@ -58,9 +58,9 @@ export async function seedInitialAdminIfNeeded(): Promise<{
   error?: string;
 }> {
   const sql = getSql();
-  const existing = await sql`
+  const existing = (await sql`
     SELECT id FROM users WHERE role = 'admin' LIMIT 1
-  `;
+  `) as Array<{ id: string }>;
   if (existing[0]) return { seeded: false };
 
   const email = (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
@@ -203,8 +203,8 @@ export async function getUserById(
 ): Promise<User | null> {
   const id = typeof a === "string" ? a : (b as string);
   const sql = getSql();
-  const rows = await sql`SELECT * FROM users WHERE id = ${id}`;
-  return rows[0] ? parseUser(rows[0] as UserRow) : null;
+  const rows = (await sql`SELECT * FROM users WHERE id = ${id}`) as UserRow[];
+  return rows[0] ? parseUser(rows[0]) : null;
 }
 
 export async function getUserByEmail(
@@ -220,11 +220,11 @@ export async function getUserByEmail(
 ): Promise<(User & { passwordHash: string }) | null> {
   const email = typeof a === "string" ? a : (b as string);
   const sql = getSql();
-  const rows = await sql`
+  const rows = (await sql`
     SELECT * FROM users WHERE lower(email) = lower(${email.trim()})
-  `;
-  if (!rows[0]) return null;
-  const row = rows[0] as UserRow;
+  `) as UserRow[];
+  const row = rows[0];
+  if (!row) return null;
   return { ...parseUser(row), passwordHash: row.password_hash };
 }
 

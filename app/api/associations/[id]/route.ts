@@ -30,9 +30,9 @@ export async function PUT(
     if (!name) return NextResponse.json({ error: "שם חובה" }, { status: 400 });
 
     const sql = getSql();
-    const existsRows = await sql`
+    const existsRows = (await sql`
       SELECT id FROM associations WHERE id = ${params.id} AND owner_id = ${ownerId}
-    `;
+    `) as Array<{ id: string }>;
     if (!existsRows[0]) return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
 
     await sql`
@@ -62,10 +62,10 @@ export async function DELETE(
   try {
     const ownerId = await getCurrentOwnerId();
     const sql = getSql();
-    const deleted = await sql`
+    const deleted = (await sql`
       DELETE FROM associations WHERE id = ${params.id} AND owner_id = ${ownerId}
       RETURNING id
-    `;
+    `) as Array<{ id: string }>;
     if (!deleted[0]) {
       return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
     }

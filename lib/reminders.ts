@@ -213,10 +213,10 @@ export async function ensureRemindersForDeposit(
     forcedBucket?: string
   ): Promise<Reminder | null> {
     const targetDateIso = toIsoDate(occ);
-    const existingRows = await sql`
+    const existingRows = (await sql`
       SELECT * FROM reminders
       WHERE deposit_id = ${deposit.id} AND target_date = ${targetDateIso} AND phase = ${phase}
-    `;
+    `) as ReminderRow[];
     if (existingRows[0]) return null;
 
     const id = uuid();

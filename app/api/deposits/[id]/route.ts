@@ -121,15 +121,15 @@ export async function PUT(
     const notes = b.notes ? String(b.notes) : null;
     const active = b.active === undefined ? !!row.active : Boolean(b.active);
 
-    const clientRows = await sql`
+    const clientRows = (await sql`
       SELECT id FROM clients WHERE id = ${clientId} AND owner_id = ${ownerId}
-    `;
+    `) as Array<{ id: string }>;
     if (!clientRows[0])
       return NextResponse.json({ error: "לקוח לא קיים" }, { status: 400 });
     if (associationId) {
-      const assocRows = await sql`
+      const assocRows = (await sql`
         SELECT id FROM associations WHERE id = ${associationId} AND owner_id = ${ownerId}
-      `;
+      `) as Array<{ id: string }>;
       if (!assocRows[0])
         return NextResponse.json(
           { error: "העמותה שנבחרה לא קיימת" },
@@ -172,10 +172,10 @@ export async function DELETE(
   try {
     const ownerId = await getCurrentOwnerId();
     const sql = getSql();
-    const deleted = await sql`
+    const deleted = (await sql`
       DELETE FROM deposits WHERE id = ${params.id} AND owner_id = ${ownerId}
       RETURNING id
-    `;
+    `) as Array<{ id: string }>;
     if (!deleted[0]) {
       return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
     }

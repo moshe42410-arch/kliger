@@ -110,16 +110,16 @@ export async function POST(req: NextRequest) {
     const v = validate(body);
     const sql = getSql();
 
-    const clientRows = await sql`
+    const clientRows = (await sql`
       SELECT id FROM clients WHERE id = ${v.clientId} AND owner_id = ${ownerId}
-    `;
+    `) as Array<{ id: string }>;
     if (!clientRows[0])
       return NextResponse.json({ error: "לקוח לא קיים" }, { status: 400 });
 
     if (v.associationId) {
-      const assocRows = await sql`
+      const assocRows = (await sql`
         SELECT id FROM associations WHERE id = ${v.associationId} AND owner_id = ${ownerId}
-      `;
+      `) as Array<{ id: string }>;
       if (!assocRows[0])
         return NextResponse.json(
           { error: "העמותה שנבחרה לא קיימת" },

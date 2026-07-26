@@ -37,9 +37,9 @@ export async function PUT(
     }
 
     if (email !== row.email.toLowerCase()) {
-      const dupRows = await sql`
+      const dupRows = (await sql`
         SELECT id FROM users WHERE lower(email) = lower(${email}) AND id != ${params.id}
-      `;
+      `) as Array<{ id: string }>;
       if (dupRows[0]) {
         return NextResponse.json(
           { error: "כבר קיים משתמש עם מייל זה" },
@@ -84,9 +84,9 @@ export async function DELETE(
       );
     }
     const sql = getSql();
-    const deleted = await sql`
+    const deleted = (await sql`
       DELETE FROM users WHERE id = ${params.id} RETURNING id
-    `;
+    `) as Array<{ id: string }>;
     if (!deleted[0]) {
       return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
     }

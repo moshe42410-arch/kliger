@@ -46,9 +46,9 @@ export async function POST(req: NextRequest) {
     }
 
     const sql = getSql();
-    const existing = await sql`
+    const existing = (await sql`
       SELECT id FROM users WHERE lower(email) = lower(${email})
-    `;
+    `) as Array<{ id: string }>;
     if (existing[0]) {
       return NextResponse.json(
         { error: "משתמש עם מייל זה כבר קיים" },
