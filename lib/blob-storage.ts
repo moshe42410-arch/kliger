@@ -10,6 +10,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { put, del } from "@vercel/blob";
 
 const LOCAL_UPLOADS_DIR = path.join(process.cwd(), "uploads");
 const LOCAL_LOGOS_DIR = path.join(process.cwd(), "uploads", "logos");
@@ -46,7 +47,6 @@ export async function putUpload(
   contentType?: string
 ): Promise<StoredFile> {
   if (useVercelBlob()) {
-    const { put } = await import("@vercel/blob");
     const blob = await put(`uploads/${filename}`, buffer, {
       access: "public",
       contentType,
@@ -81,7 +81,6 @@ export async function putLogo(
   contentType?: string
 ): Promise<StoredFile> {
   if (useVercelBlob()) {
-    const { put } = await import("@vercel/blob");
     const blob = await put(`logos/${filename}`, buffer, {
       access: "public",
       contentType,
@@ -115,7 +114,6 @@ export async function deleteBlob(key: string): Promise<void> {
   if (key.startsWith("http")) {
     // Vercel Blob URL
     try {
-      const { del } = await import("@vercel/blob");
       await del(key);
     } catch (err) {
       console.warn("[blob] delete failed:", err);

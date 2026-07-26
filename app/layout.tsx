@@ -2,17 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Sidebar, type SidebarCounts } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
-import { startScheduler } from "@/lib/scheduler";
 import { getSql } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 
-if (typeof window === "undefined") {
-  try {
-    startScheduler();
-  } catch (e) {
-    console.error("scheduler start failed:", e);
-  }
-}
+// Scheduler runs via Vercel Cron (/api/cron/reminders), not in-process.
 
 export const metadata: Metadata = {
   title: "KLIGER - עובדים חכם עובדים נכון",
