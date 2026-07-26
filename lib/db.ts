@@ -19,14 +19,17 @@ import { neon, neonConfig } from "@neondatabase/serverless";
 neonConfig.fetchConnectionCache = true;
 
 /**
- * Narrow Neon SQL helper to always return a row array.
- * Neon's default ReturnType is a wide union (FullQueryResults | arrays)
- * that TypeScript refuses to index with [0] under strict mode.
+ * Neon SQL helper typed as a tagged-template that always returns a row array.
+ * We avoid Neon's wide ReturnType union (FullQueryResults | arrays) which
+ * breaks indexing and row casts under strict TypeScript.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Sql = (
   strings: TemplateStringsArray,
-  ...values: unknown[]
-) => Promise<Record<string, unknown>[]>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ...values: any[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+) => Promise<any[]>;
 
 let _sql: Sql | null = null;
 
