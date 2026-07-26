@@ -66,8 +66,13 @@ async function refreshGoogleAccessToken(refreshToken: string): Promise<string> {
   return json.access_token;
 }
 
+/** RFC 2047 encoded-word — required for Hebrew (and any non-ASCII) in headers. */
+function encodeHeaderWord(value: string): string {
+  return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
+}
+
 function encodeSubject(subject: string): string {
-  return `=?UTF-8?B?${Buffer.from(subject, "utf8").toString("base64")}?=`;
+  return encodeHeaderWord(subject);
 }
 
 function toBase64Url(buf: Buffer): string {
@@ -91,8 +96,10 @@ async function sendViaGmailApi(opts: {
   const boundary = `kliger_${uuid().replace(/-/g, "")}`;
   const hasAttachments = Boolean(opts.attachments?.length);
 
+  // Display name MUST be RFC 2047-encoded; raw UTF-8 Hebrew becomes mojibake in Gmail.
+  const fromDisplay = encodeHeaderWord(opts.fromName.replace(/[\r\n"]/g, "").trim());
   const headers = [
-    `From: "${opts.fromName.replace(/"/g, "")}" <${opts.fromEmail}>`,
+    `From: ${fromDisplay} <${opts.fromEmail}>`,
     `To: ${opts.to.join(", ")}`,
     `Subject: ${encodeSubject(opts.subject)}`,
     "MIME-Version: 1.0",
