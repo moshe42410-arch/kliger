@@ -18,7 +18,15 @@ import { neon, neonConfig } from "@neondatabase/serverless";
 
 neonConfig.fetchConnectionCache = true;
 
-export type Sql = ReturnType<typeof neon>;
+/**
+ * Narrow Neon SQL helper to always return a row array.
+ * Neon's default ReturnType is a wide union (FullQueryResults | arrays)
+ * that TypeScript refuses to index with [0] under strict mode.
+ */
+export type Sql = (
+  strings: TemplateStringsArray,
+  ...values: unknown[]
+) => Promise<Record<string, unknown>[]>;
 
 let _sql: Sql | null = null;
 
@@ -36,7 +44,7 @@ export function getSql(): Sql {
       "DATABASE_URL is not set. Get your connection string from https://console.neon.tech and add it to .env.local (dev) or Vercel Environment Variables (prod)."
     );
   }
-  _sql = neon(url);
+  _sql = neon(url) as unknown as Sql;
   return _sql;
 }
 
