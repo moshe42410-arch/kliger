@@ -24,28 +24,28 @@ interface EmptyStateProps {
 
 const toneStyles: Record<Tone, { iconBg: string; blob: string }> = {
   gold: {
-    iconBg: "kpi-icon gold",
-    blob: "bg-gold-400/20",
+    iconBg: "kpi-icon blue",
+    blob: "bg-navy-100",
   },
   blue: {
     iconBg: "kpi-icon blue",
-    blob: "bg-navy-400/25",
+    blob: "bg-navy-100",
   },
   green: {
-    iconBg: "kpi-icon green",
-    blob: "bg-emerald-400/25",
+    iconBg: "kpi-icon blue",
+    blob: "bg-navy-100",
   },
   amber: {
-    iconBg: "kpi-icon amber",
-    blob: "bg-amber-400/25",
+    iconBg: "kpi-icon blue",
+    blob: "bg-navy-100",
   },
   purple: {
     iconBg: "kpi-icon purple",
-    blob: "bg-purple-400/25",
+    blob: "bg-navy-100",
   },
   rose: {
     iconBg: "kpi-icon rose",
-    blob: "bg-red-400/25",
+    blob: "bg-navy-100",
   },
 };
 

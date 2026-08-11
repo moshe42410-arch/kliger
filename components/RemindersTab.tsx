@@ -486,28 +486,10 @@ export function RemindersTab({
               role="tab"
               aria-selected={isActive}
               onClick={() => setActiveTab(t.key)}
-              className={`
-                relative px-5 py-2.5 rounded-xl font-semibold border
-                transition-all duration-200 ease-out
-                ${
-                  isActive
-                    ? "bg-gradient-to-br from-teal-400 to-teal-600 text-white border-teal-500 shadow-[0_10px_30px_-8px_rgba(54,153,137,0.5)] -translate-y-0.5"
-                    : "bg-white text-navy-700 border-navy-950/10 hover:border-teal-400/50 hover:-translate-y-0.5 hover:text-teal-700"
-                }
-              `}
+              className={`tab-filter ${isActive ? "tab-filter-active" : ""}`}
             >
               <span>{reminderStatusLabel[t.key]}</span>
-              <span
-                className={`mr-2 inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-xs font-bold transition-all ${
-                  isActive
-                    ? "bg-white/25 text-white"
-                    : c > 0
-                      ? "bg-gold-500/20 text-gold-700"
-                      : "bg-navy-950/8 text-navy-500"
-                }`}
-              >
-                {c}
-              </span>
+              <span className="tab-filter-count">{c}</span>
             </button>
           );
         })}

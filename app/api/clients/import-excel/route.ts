@@ -95,14 +95,16 @@ export async function POST(req: NextRequest) {
         await sql`
           INSERT INTO clients (
             id, owner_id, name, emails, phones, reminder_channel,
-            case_type, bank, required_amount, property_value, property_address
+            case_type, bank, required_amount, property_value, property_address,
+            spouse_name, spouse_email, spouse_phone
           )
           VALUES (
             ${id}, ${ownerId}, ${row.name},
             ${JSON.stringify(row.emails)}, ${JSON.stringify(row.phones)},
             ${row.reminderChannel},
             ${row.caseType}, ${row.bank}, ${row.requiredAmount},
-            ${row.propertyValue}, ${row.propertyAddress}
+            ${row.propertyValue}, ${row.propertyAddress},
+            ${row.spouseName}, ${row.spouseEmail}, ${row.spousePhone}
           )
         `;
         const rows = await sql`SELECT * FROM clients WHERE id = ${id}`;

@@ -310,6 +310,9 @@ export interface ClientRow {
   income_snapshot: string | null;
   income_snapshot_at: string | null;
   income_source_filename: string | null;
+  spouse_name: string | null;
+  spouse_email: string | null;
+  spouse_phone: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -332,6 +335,9 @@ export interface Client {
   incomeSnapshot: IncomeSnapshot | null;
   incomeSnapshotAt: string | null;
   incomeSourceFilename: string | null;
+  spouseName: string | null;
+  spouseEmail: string | null;
+  spousePhone: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -361,6 +367,9 @@ export function parseClient(row: ClientRow): Client {
     incomeSnapshot: parseIncomeSnapshotJson(row.income_snapshot),
     incomeSnapshotAt: row.income_snapshot_at ?? null,
     incomeSourceFilename: row.income_source_filename ?? null,
+    spouseName: row.spouse_name ?? null,
+    spouseEmail: row.spouse_email ?? null,
+    spousePhone: row.spouse_phone ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

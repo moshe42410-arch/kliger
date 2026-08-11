@@ -16,6 +16,9 @@ export interface ParsedClientImportRow {
   requiredAmount: number | null;
   propertyValue: number | null;
   propertyAddress: string | null;
+  spouseName: string | null;
+  spouseEmail: string | null;
+  spousePhone: string | null;
 }
 
 export interface ParseClientsExcelResult {
@@ -66,6 +69,19 @@ const HEADER_ALIASES: Record<string, string[]> = {
   propertyValue: ["שווי נכס", "שווי", "property value", "value"],
   propertyAddress: ["כתובת נכס", "כתובת", "address"],
   reminderChannel: ["ערוץ תזכורת", "ערוץ", "תזכורת", "channel"],
+  spouseName: ["בן זוג", "שם בן זוג", "בת זוג", "spouse", "spouse name"],
+  spouseEmail: [
+    "מייל בן זוג",
+    "אימייל בן זוג",
+    "דואל בן זוג",
+    "spouse email",
+  ],
+  spousePhone: [
+    "טלפון בן זוג",
+    "פלאפון בן זוג",
+    "נייד בן זוג",
+    "spouse phone",
+  ],
 };
 
 function mapHeaders(headerRow: unknown[]): Record<string, number> {
@@ -73,9 +89,31 @@ function mapHeaders(headerRow: unknown[]): Record<string, number> {
   headerRow.forEach((raw, i) => {
     const h = normalizeHeader(cellStr(raw));
     if (!h) return;
+    const isSpouseCol = h.includes("בן זוג") || h.includes("בת זוג") || h.includes("spouse");
     for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
       if (map[field] != null) continue;
-      if (aliases.some((a) => h === normalizeHeader(a) || h.includes(normalizeHeader(a)))) {
+      if (
+        !isSpouseCol &&
+        (field === "spouseName" ||
+          field === "spouseEmail" ||
+          field === "spousePhone")
+      ) {
+        continue;
+      }
+      if (
+        isSpouseCol &&
+        (field === "name" || field === "emails" || field === "phones")
+      ) {
+        continue;
+      }
+      const sorted = [...aliases].sort(
+        (a, b) => normalizeHeader(b).length - normalizeHeader(a).length
+      );
+      if (
+        sorted.some(
+          (a) => h === normalizeHeader(a) || h.includes(normalizeHeader(a))
+        )
+      ) {
         map[field] = i;
       }
     }
@@ -203,6 +241,18 @@ export function parseClientsExcelBuffer(buf: Buffer): ParseClientsExcelResult {
           ? cellNum(row[colMap.propertyValue])
           : null,
       propertyAddress: addr,
+      spouseName:
+        colMap.spouseName != null
+          ? cellStr(row[colMap.spouseName]) || null
+          : null,
+      spouseEmail:
+        colMap.spouseEmail != null
+          ? cellStr(row[colMap.spouseEmail]) || null
+          : null,
+      spousePhone:
+        colMap.spousePhone != null
+          ? cellStr(row[colMap.spousePhone]) || null
+          : null,
     });
   }
 
@@ -215,6 +265,9 @@ export function buildClientsImportTemplateBuffer(): Buffer {
     "שם לקוח",
     "מייל",
     "טלפון",
+    "בן זוג",
+    "מייל בן זוג",
+    "טלפון בן זוג",
     "מהות התיק",
     "בנק",
     "סכום מבוקש",
@@ -226,6 +279,9 @@ export function buildClientsImportTemplateBuffer(): Buffer {
     "ישראל ישראלי",
     "israel@example.com",
     "0501234567",
+    "שרה ישראלי",
+    "sara@example.com",
+    "0507654321",
     "תוספת",
     "פועלים",
     750000,

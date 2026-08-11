@@ -37,6 +37,9 @@ interface ClientFormState {
   requiredAmount: string;
   propertyValue: string;
   propertyAddress: string;
+  spouseName: string;
+  spouseEmail: string;
+  spousePhone: string;
 }
 
 const emptyForm: ClientFormState = {
@@ -49,6 +52,9 @@ const emptyForm: ClientFormState = {
   requiredAmount: "",
   propertyValue: "",
   propertyAddress: "",
+  spouseName: "",
+  spouseEmail: "",
+  spousePhone: "",
 };
 
 function formatILS(n: number | null | undefined): string {
@@ -116,6 +122,9 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
     return clients.filter((c) => {
       const hay = [
         c.name,
+        c.spouseName || "",
+        c.spouseEmail || "",
+        c.spousePhone || "",
         c.bank || "",
         c.propertyAddress || "",
         c.caseType ? caseTypeLabel[c.caseType] : "",
@@ -146,6 +155,9 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
       requiredAmount: c.requiredAmount != null ? String(c.requiredAmount) : "",
       propertyValue: c.propertyValue != null ? String(c.propertyValue) : "",
       propertyAddress: c.propertyAddress || "",
+      spouseName: c.spouseName || "",
+      spouseEmail: c.spouseEmail || "",
+      spousePhone: c.spousePhone || "",
     });
     setShowForm(true);
     setError(null);
@@ -165,6 +177,9 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
         requiredAmount: form.requiredAmount ? Number(form.requiredAmount) : null,
         propertyValue: form.propertyValue ? Number(form.propertyValue) : null,
         propertyAddress: form.propertyAddress.trim() || null,
+        spouseName: form.spouseName.trim() || null,
+        spouseEmail: form.spouseEmail.trim() || null,
+        spousePhone: form.spousePhone.trim() || null,
       };
       if (!payload.name) throw new Error("שם הלקוח חובה");
 
@@ -362,7 +377,7 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
           {filteredClients.map((c) => (
             <div
               key={c.id}
-              className="card flex flex-col md:flex-row gap-4 md:items-center justify-between cursor-pointer hover:border-gold-500/40 transition-colors"
+              className="card flex flex-col md:flex-row gap-4 md:items-center justify-between cursor-pointer hover:border-navy-950/25 transition-colors"
               onClick={() => router.push(`/clients/${c.id}`)}
             >
               <div className="flex-1 min-w-0">
@@ -371,7 +386,7 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
                     {c.name}
                   </h3>
                   {c.caseType && (
-                    <span className="chip chip-purple">
+                    <span className="case-meta">
                       {caseTypeLabel[c.caseType]}
                     </span>
                   )}
@@ -388,13 +403,16 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
                     if (pct == null) return null;
                     return (
                       <span
-                        className="chip chip-blue"
+                        className="case-meta"
                         title={`סכום מבוקש ${formatILS(c.requiredAmount)} מתוך שווי נכס ${formatILS(c.propertyValue)}`}
                       >
                         מימון {formatPercent(pct)}
                       </span>
                     );
                   })()}
+                  {c.spouseName && (
+                    <span className="case-meta">בן/בת זוג: {c.spouseName}</span>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-navy-700">
                   {c.bank && (
@@ -633,6 +651,47 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
                   >
                     <Plus size={14} /> הוסף טלפון נוסף
                   </button>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-navy-100 space-y-3">
+                <p className="text-sm font-semibold text-navy-800">בן / בת זוג</p>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="label">שם</label>
+                    <input
+                      className="input"
+                      value={form.spouseName}
+                      onChange={(e) =>
+                        setForm({ ...form, spouseName: e.target.value })
+                      }
+                      placeholder="אופציונלי"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">מייל</label>
+                    <input
+                      className="input"
+                      type="email"
+                      dir="ltr"
+                      value={form.spouseEmail}
+                      onChange={(e) =>
+                        setForm({ ...form, spouseEmail: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="label">טלפון</label>
+                    <input
+                      className="input"
+                      type="tel"
+                      dir="ltr"
+                      value={form.spousePhone}
+                      onChange={(e) =>
+                        setForm({ ...form, spousePhone: e.target.value })
+                      }
+                    />
+                  </div>
                 </div>
               </div>
 

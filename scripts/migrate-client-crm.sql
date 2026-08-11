@@ -15,6 +15,9 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS drive_folder_id TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS income_snapshot TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS income_snapshot_at TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS income_source_filename TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS spouse_name TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS spouse_email TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS spouse_phone TEXT;
 
 -- deposits: scholarship delivery mode
 ALTER TABLE deposits ADD COLUMN IF NOT EXISTS scholarship_delivery TEXT;

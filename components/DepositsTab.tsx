@@ -428,16 +428,10 @@ export function DepositsTab({
               role="tab"
               aria-selected={active}
               onClick={() => setDocTab(t.key)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
-                active
-                  ? "bg-gradient-to-br from-teal-400 to-teal-600 text-white border-teal-500 shadow-md"
-                  : "bg-white text-navy-700 border-navy-950/10 hover:border-teal-400/50"
-              }`}
+              className={`tab-filter ${active ? "tab-filter-active" : ""}`}
             >
               {t.label}{" "}
-              <span className={active ? "opacity-90" : "text-navy-500"}>
-                ({tabCounts[t.key]})
-              </span>
+              <span className="tab-filter-count">({tabCounts[t.key]})</span>
             </button>
           );
         })}
@@ -454,8 +448,8 @@ export function DepositsTab({
 
       {filteredDeposits.length === 0 ? (
         <div className="card text-center py-16">
-          <div className="inline-flex p-5 rounded-full bg-gold-500/15 mb-4">
-            <CreditCard size={32} className="text-gold-600" />
+          <div className="inline-flex p-5 rounded-2xl bg-navy-50 border border-navy-100 mb-4">
+            <CreditCard size={32} className="text-navy-700" />
           </div>
           <h3 className="text-xl font-heading font-bold text-navy-950 mb-2">
             אין הפקדות בלשונית זו
@@ -501,7 +495,7 @@ export function DepositsTab({
                         תזכורת ל: {reminderRecipientLabel[d.reminderRecipient]}
                       </span>
                       {assoc && (
-                        <span className="chip chip-green">
+                        <span className="case-meta">
                           <Building2 size={12} /> {assoc.name}
                         </span>
                       )}
@@ -705,10 +699,10 @@ export function DepositsTab({
                       onClick={() =>
                         setForm({ ...form, responsibility: r })
                       }
-                      className={`p-3 rounded-xl border transition-all text-sm font-medium ${
+                      className={`p-3 rounded-2xl border transition-all text-sm font-medium ${
                         form.responsibility === r
-                          ? "bg-gradient-to-br from-teal-400 to-teal-600 text-white border-teal-500 shadow-md"
-                          : "bg-white border-navy-950/10 text-navy-800 hover:border-teal-500/50"
+                          ? "bg-navy-950 text-white border-navy-950"
+                          : "bg-white border-navy-950/15 text-navy-800 hover:border-navy-950/35"
                       }`}
                     >
                       {responsibilityLabel[r]}

@@ -40,6 +40,12 @@ function parseCaseFields(body: Record<string, unknown>) {
     body.driveFolderId != null
       ? String(body.driveFolderId).trim() || null
       : null;
+  const spouseName =
+    body.spouseName != null ? String(body.spouseName).trim() || null : null;
+  const spouseEmail =
+    body.spouseEmail != null ? String(body.spouseEmail).trim() || null : null;
+  const spousePhone =
+    body.spousePhone != null ? String(body.spousePhone).trim() || null : null;
   return {
     caseType,
     bank,
@@ -48,6 +54,9 @@ function parseCaseFields(body: Record<string, unknown>) {
     propertyAddress,
     driveFolderUrl,
     driveFolderId,
+    spouseName,
+    spouseEmail,
+    spousePhone,
   };
 }
 
@@ -107,6 +116,9 @@ export async function PUT(
           property_address = ${caseFields.propertyAddress},
           drive_folder_url = ${caseFields.driveFolderUrl},
           drive_folder_id = ${caseFields.driveFolderId},
+          spouse_name = ${caseFields.spouseName},
+          spouse_email = ${caseFields.spouseEmail},
+          spouse_phone = ${caseFields.spousePhone},
           updated_at = ${nowIso()}
       WHERE id = ${params.id}
     `;

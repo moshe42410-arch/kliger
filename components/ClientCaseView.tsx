@@ -21,6 +21,7 @@ import {
   Pencil,
   Calculator,
   X,
+  Users,
 } from "lucide-react";
 import type {
   Client,
@@ -135,6 +136,9 @@ export function ClientCaseView({ initialClient }: Props) {
     propertyValue: initialClient.propertyValue?.toString() || "",
     propertyAddress: initialClient.propertyAddress || "",
     driveFolderUrl: initialClient.driveFolderUrl || "",
+    spouseName: initialClient.spouseName || "",
+    spouseEmail: initialClient.spouseEmail || "",
+    spousePhone: initialClient.spousePhone || "",
   });
 
   const [editingIncome, setEditingIncome] = useState(false);
@@ -243,6 +247,9 @@ export function ClientCaseView({ initialClient }: Props) {
         propertyAddress: form.propertyAddress.trim() || null,
         driveFolderUrl: form.driveFolderUrl.trim() || null,
         driveFolderId: client.driveFolderId,
+        spouseName: form.spouseName.trim() || null,
+        spouseEmail: form.spouseEmail.trim() || null,
+        spousePhone: form.spousePhone.trim() || null,
       };
       if (!payload.name) throw new Error("שם הלקוח חובה");
       const res = await fetch(`/api/clients/${client.id}`, {
@@ -563,6 +570,44 @@ export function ClientCaseView({ initialClient }: Props) {
                 }
               />
             </div>
+            <div className="md:col-span-2 pt-2 border-t border-navy-100">
+              <p className="text-sm font-semibold text-navy-800 mb-3">בן / בת זוג</p>
+              <div className="grid md:grid-cols-3 gap-4">
+                <div>
+                  <label className="label">שם</label>
+                  <input
+                    className="input"
+                    value={form.spouseName}
+                    onChange={(e) =>
+                      setForm({ ...form, spouseName: e.target.value })
+                    }
+                    placeholder="אופציונלי"
+                  />
+                </div>
+                <div>
+                  <label className="label">מייל</label>
+                  <input
+                    className="input"
+                    dir="ltr"
+                    value={form.spouseEmail}
+                    onChange={(e) =>
+                      setForm({ ...form, spouseEmail: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="label">טלפון</label>
+                  <input
+                    className="input"
+                    dir="ltr"
+                    value={form.spousePhone}
+                    onChange={(e) =>
+                      setForm({ ...form, spousePhone: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
           </div>
           <button className="btn-primary" onClick={save} disabled={saving}>
             <Save size={16} /> {saving ? "שומר..." : "שמור"}
@@ -570,9 +615,9 @@ export function ClientCaseView({ initialClient }: Props) {
         </section>
       )}
 
-      <section className="grid sm:grid-cols-2 gap-4 mb-8">
+      <section className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <div className="card flex items-start gap-3">
-          <Mail className="text-teal-600 shrink-0 mt-1" size={18} />
+          <Mail className="text-navy-600 shrink-0 mt-1" size={18} />
           <div>
             <p className="text-xs text-navy-600 mb-1">מייל</p>
             <p className="text-navy-900" dir="ltr">
@@ -581,7 +626,7 @@ export function ClientCaseView({ initialClient }: Props) {
           </div>
         </div>
         <div className="card flex items-start gap-3">
-          <Phone className="text-teal-600 shrink-0 mt-1" size={18} />
+          <Phone className="text-navy-600 shrink-0 mt-1" size={18} />
           <div>
             <p className="text-xs text-navy-600 mb-1">טלפון</p>
             <p className="text-navy-900" dir="ltr">
@@ -589,12 +634,37 @@ export function ClientCaseView({ initialClient }: Props) {
             </p>
           </div>
         </div>
+        <div className="card flex items-start gap-3 sm:col-span-2 lg:col-span-1">
+          <Users className="text-navy-600 shrink-0 mt-1" size={18} />
+          <div className="min-w-0">
+            <p className="text-xs text-navy-600 mb-1">בן / בת זוג</p>
+            {client.spouseName || client.spouseEmail || client.spousePhone ? (
+              <div className="space-y-0.5">
+                <p className="text-navy-900 font-medium">
+                  {client.spouseName || "—"}
+                </p>
+                {client.spouseEmail && (
+                  <p className="text-sm text-navy-700" dir="ltr">
+                    {client.spouseEmail}
+                  </p>
+                )}
+                {client.spousePhone && (
+                  <p className="text-sm text-navy-700" dir="ltr">
+                    {client.spousePhone}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-navy-500 text-sm">לא הוגדר</p>
+            )}
+          </div>
+        </div>
       </section>
 
       <section className="card mb-8">
         <div className="flex items-start gap-3 mb-4">
-          <div className="p-3 rounded-xl bg-gold-500/15">
-            <FolderOpen className="text-gold-700" size={22} />
+          <div className="p-3 rounded-2xl bg-navy-50 border border-navy-100">
+            <FolderOpen className="text-navy-700" size={22} />
           </div>
           <div>
             <h2 className="text-xl font-heading font-bold text-navy-950">
@@ -638,6 +708,9 @@ export function ClientCaseView({ initialClient }: Props) {
                       propertyAddress: client.propertyAddress,
                       driveFolderUrl: form.driveFolderUrl.trim() || null,
                       driveFolderId: client.driveFolderId,
+                      spouseName: client.spouseName,
+                      spouseEmail: client.spouseEmail,
+                      spousePhone: client.spousePhone,
                     }),
                   });
                   if (!res.ok) throw new Error("שמירה נכשלה");
@@ -878,7 +951,7 @@ export function ClientCaseView({ initialClient }: Props) {
                     onClick={() =>
                       setIncomes((prev) => [
                         ...prev,
-                        { status: "קיים", person: "", amount: 0, notes: "" },
+                        { status: "", person: "", amount: 0, notes: "" },
                       ])
                     }
                   >
@@ -905,8 +978,8 @@ export function ClientCaseView({ initialClient }: Props) {
                           {editingIncome ? (
                             <>
                               <td className="py-2 pe-2">
-                                <input
-                                  className="input py-1.5 text-sm"
+                                <select
+                                  className="select py-1.5 text-sm"
                                   value={line.status || ""}
                                   onChange={(e) =>
                                     setIncomes((prev) =>
@@ -917,7 +990,11 @@ export function ClientCaseView({ initialClient }: Props) {
                                       )
                                     )
                                   }
-                                />
+                                >
+                                  <option value="">—</option>
+                                  <option value="קיים">קיים</option>
+                                  <option value="מבוקש">מבוקש</option>
+                                </select>
                               </td>
                               <td className="py-2 pe-2">
                                 <input
