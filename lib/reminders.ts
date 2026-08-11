@@ -28,7 +28,8 @@ import {
 } from "./db";
 import { sendEmail } from "./email";
 import { getBlobBytes } from "./blob-storage";
-import { depositTypeLabel } from "./types";
+import { depositTypeLabel, depositRequiresPayment, scholarshipDeliveryLabel } from "./types";
+import { deriveReminderStatusFromDocs } from "./reminder-inbox";
 import { isShabbatOrHoliday, isErevChag } from "./shabbat";
 import {
   mergeTemplates,
@@ -39,6 +40,40 @@ import {
 
 const VERIFY_PAYMENT_DELAY_DAYS = 1;
 const ESCALATE_TO_CLIENT_AFTER_DAYS = 3;
+
+function isTargetReachedOrPassed(targetDateIso: string): boolean {
+  try {
+    const target = startOfDay(parseISO(targetDateIso));
+    const today = startOfDay(new Date());
+    return !isBefore(today, target);
+  } catch {
+    return false;
+  }
+}
+
+function buildClientActionLine(deposit: Deposit, targetDateIso: string): string {
+  const amount = formatCurrency(deposit.amount);
+  const reached = isTargetReachedOrPassed(targetDateIso);
+  switch (deposit.depositType) {
+    case "salary_slip":
+      return `יש לדאוג בהקדם למזומן בסך ${amount} עבור תלוש משכורת ${
+        reached ? "שנכנס לחשבון" : "שעתיד להיכנס לחשבונך"
+      }`;
+    case "kollel_scholarship": {
+      const method =
+        scholarshipDeliveryLabel[deposit.scholarshipDelivery || "cash"];
+      return `יש לדאוג בהקדם ל${method} עבור מילגה ${
+        reached ? "שנכנסה" : "שעתידה להיכנס"
+      } לחשבונך`;
+    }
+    case "private_transfer":
+      return `יש לדאוג בהקדם להעברה עם סוג פעולה משכורת — נא להעלות אסמכתא בקישור המצורף לאחר שהעברה בוצעה`;
+    case "cash_check":
+      return `יש לדאוג בהקדם להפקדת מזומן / צ׳ק בסך ${amount} — נא להעלות אסמכתא בקישור המצורף לאחר שההפקדה בוצעה`;
+    default:
+      return `יש לדאוג בהקדם להסדרת ${depositTypeLabel[deposit.depositType]} בסך ${amount}`;
+  }
+}
 
 function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
@@ -126,6 +161,17 @@ export async function buildReminderContent(
   const template = templates[templateId];
 
   const accountBlock = buildAccountBlock(association);
+  const clientActionLine = buildClientActionLine(deposit, targetDateIso);
+  const deliveryMethod =
+    scholarshipDeliveryLabel[deposit.scholarshipDelivery || "cash"];
+  const timingPhrase = isTargetReachedOrPassed(targetDateIso)
+    ? deposit.depositType === "kollel_scholarship"
+      ? "שנכנסה"
+      : "שנכנס"
+    : deposit.depositType === "kollel_scholarship"
+      ? "שעתידה להיכנס"
+      : "שעתיד להיכנס";
+
   const vars: TemplateVars = {
     clientName: client.name,
     advisorName: advisorName || advisorUser?.name || "",
@@ -138,6 +184,9 @@ export async function buildReminderContent(
     associationName: association?.name || "",
     accountBlock: accountBlock ? `\n\n${accountBlock}` : "",
     daysLate: String(ESCALATE_TO_CLIENT_AFTER_DAYS),
+    clientActionLine,
+    deliveryMethod,
+    timingPhrase,
   };
 
   return renderTemplate(template, vars);
@@ -201,7 +250,6 @@ export async function ensureRemindersForDeposit(
   const advisor = ownerUser ? userAsAdvisor(ownerUser) : null;
   const created: Reminder[] = [];
   const now = new Date();
-  const currentBucket = currentMonthBucket();
 
   const startDate = deposit.startDate ? parseISO(deposit.startDate) : now;
   const endDate = deposit.endDate ? parseISO(deposit.endDate) : null;
@@ -233,40 +281,55 @@ export async function ensureRemindersForDeposit(
       advisor?.name
     );
 
-    const bucket = forcedBucket ?? monthBucketOf(scheduled);
+    // month_bucket = חודש היעד (יום ההפקדה), לא תאריך התזכורת
+    const bucket = forcedBucket ?? monthBucketOf(occ);
     await sql`
       INSERT INTO reminders (id, owner_id, deposit_id, client_id, status, phase, target_date, scheduled_for, subject, body, upload_token, month_bucket)
-      VALUES (${id}, ${deposit.ownerId}, ${deposit.id}, ${deposit.clientId}, 'waiting_client', ${phase}, ${targetDateIso}, ${scheduled.toISOString()}, ${subject}, ${body}, ${token}, ${bucket})
+      VALUES (${id}, ${deposit.ownerId}, ${deposit.id}, ${deposit.clientId}, 'waiting_advisor', ${phase}, ${targetDateIso}, ${scheduled.toISOString()}, ${subject}, ${body}, ${token}, ${bucket})
     `;
 
     const rows = await sql`SELECT * FROM reminders WHERE id = ${id}`;
     return parseReminder(rows[0] as ReminderRow);
   }
 
-  const occurrences = occurrencesInRange(
-    deposit.dayOfMonth,
-    startDate,
-    endDate,
-    now,
-    2
-  );
+  const startDay = startOfDay(startDate);
+  const endDay = endDate ? startOfDay(endDate) : null;
+  const nowDay = startOfDay(now);
 
-  for (const occ of occurrences) {
+  // חודש קודם / נוכחי / הבא — כדי לתפוס תזכורת שנפתחת X ימים לפני (חוצה חודשים)
+  const candidateOccs: Date[] = [];
+  for (let i = -1; i <= 1; i++) {
+    const y = now.getFullYear();
+    const m = now.getMonth() + i;
+    const normY = y + Math.floor(m / 12);
+    const normM = ((m % 12) + 12) % 12;
+    const dim = daysInMonth(normY, normM + 1);
+    const occ = new Date(normY, normM, Math.min(deposit.dayOfMonth, dim));
+    const o = startOfDay(occ);
+    if (o < startDay) continue;
+    if (endDay && o > endDay) continue;
+    candidateOccs.push(occ);
+  }
+
+  for (const occ of candidateOccs) {
     const scheduledPrimary = addDays(occ, -deposit.daysBeforeReminder);
-    if (monthBucketOf(scheduledPrimary) === currentBucket) {
+    // נפתחת רק ממועד התזכורת (למשל 5 ימים לפני יום 10)
+    const windowOpen =
+      options.force || startOfDay(scheduledPrimary) <= nowDay;
+    if (windowOpen) {
       const r = await insertReminder(occ, scheduledPrimary, "primary");
       if (r) created.push(r);
     }
     if (deposit.responsibility === "advisor") {
       const scheduledVerify = addDays(occ, VERIFY_PAYMENT_DELAY_DAYS);
-      if (monthBucketOf(scheduledVerify) === currentBucket) {
+      if (options.force || startOfDay(scheduledVerify) <= nowDay) {
         const r = await insertReminder(occ, scheduledVerify, "verify_payment");
         if (r) created.push(r);
       }
     }
   }
 
-  if (options.force && occurrences.length === 0) {
+  if (options.force && created.length === 0) {
     const wide = occurrencesInRange(
       deposit.dayOfMonth,
       startDate,
@@ -277,25 +340,12 @@ export async function ensureRemindersForDeposit(
     if (wide.length > 0) {
       const occ = wide[0];
       const scheduled = addDays(occ, -deposit.daysBeforeReminder);
-      const r = await insertReminder(occ, scheduled, "primary", currentBucket);
-      if (r) created.push(r);
-    }
-  } else if (options.force && occurrences.length > 0) {
-    let stillHasCurrent = created.length > 0;
-    if (!stillHasCurrent) {
-      const existing = await sql`
-        SELECT 1 FROM reminders
-        WHERE deposit_id = ${deposit.id}
-          AND month_bucket = ${currentBucket}
-          AND status IN ('waiting_client','waiting_advisor','carried_over')
-        LIMIT 1
-      `;
-      stillHasCurrent = !!existing[0];
-    }
-    if (!stillHasCurrent) {
-      const occ = occurrences[0];
-      const scheduled = addDays(occ, -deposit.daysBeforeReminder);
-      const r = await insertReminder(occ, scheduled, "primary", currentBucket);
+      const r = await insertReminder(
+        occ,
+        scheduled,
+        "primary",
+        monthBucketOf(occ)
+      );
       if (r) created.push(r);
     }
   }
@@ -308,16 +358,30 @@ export interface EmailRecipients {
   clientEmails: string[];
 }
 
+export type SendAudience = "advisor" | "client" | "both" | "deposit" | "auto";
+
 export function computeRecipients(
   deposit: Deposit,
   reminder: Reminder,
   client: Client,
-  advisorEmail: string | null
+  advisorEmail: string | null,
+  audience: SendAudience = "deposit"
 ): EmailRecipients {
   const clientEmails = client.emails.filter((e) => e && e.includes("@"));
   const advisorEmails =
     advisorEmail && advisorEmail.includes("@") ? [advisorEmail] : [];
 
+  if (audience === "advisor" || audience === "auto") {
+    return { advisorEmails, clientEmails: [] };
+  }
+  if (audience === "client") {
+    return { advisorEmails: [], clientEmails };
+  }
+  if (audience === "both") {
+    return { advisorEmails, clientEmails };
+  }
+
+  // deposit / default — respect deposit setting (used rarely; auto uses advisor)
   if (reminder.phase === "verify_payment") {
     return {
       advisorEmails,
@@ -336,7 +400,10 @@ export function computeRecipients(
   }
 }
 
-export async function sendReminderNow(reminderId: string): Promise<{
+export async function sendReminderNow(
+  reminderId: string,
+  options: { audience?: SendAudience } = {}
+): Promise<{
   ok: boolean;
   error?: string;
   sentTo?: string[];
@@ -346,8 +413,8 @@ export async function sendReminderNow(reminderId: string): Promise<{
   const rRow = rRows[0] as ReminderRow | undefined;
   if (!rRow) return { ok: false, error: "תזכורת לא נמצאה" };
   const reminder = parseReminder(rRow);
-  if (reminder.status === "resolved" || reminder.paidAt) {
-    return { ok: false, error: "התזכורת כבר סומנה כטופלה / שולם" };
+  if (reminder.status === "resolved") {
+    return { ok: false, error: "התזכורת כבר סומנה כטופלה" };
   }
   const cRows = await sql`SELECT * FROM clients WHERE id = ${reminder.clientId}`;
   const cRow = cRows[0] as ClientRow | undefined;
@@ -359,6 +426,11 @@ export async function sendReminderNow(reminderId: string): Promise<{
   const deposit = parseDeposit(dRow);
   if (!deposit.active) return { ok: false, error: "ההפקדה כבויה" };
 
+  const ownerUser = await getUserById(reminder.ownerId);
+  if (options.audience === "auto" && ownerUser && !ownerUser.autoRemindersEnabled) {
+    return { ok: true, sentTo: [] };
+  }
+
   let association: Association | null = null;
   if (deposit.associationId) {
     const aRows = await sql`
@@ -368,14 +440,15 @@ export async function sendReminderNow(reminderId: string): Promise<{
     if (aRow) association = parseAssociation(aRow);
   }
 
-  const ownerUser = await getUserById(reminder.ownerId);
   const advisor = ownerUser ? userAsAdvisor(ownerUser) : null;
   const uploadUrl = buildUploadUrl(reminder.uploadToken || "");
+  const audience: SendAudience = options.audience ?? "advisor";
   const recipients = computeRecipients(
     deposit,
     reminder,
     client,
-    advisor?.email ?? null
+    advisor?.email ?? null,
+    audience === "auto" ? "advisor" : audience
   );
 
   const sentTo: string[] = [];
@@ -572,7 +645,8 @@ export async function runDailyReminderSweep(): Promise<{
       if (isBefore(oneDayAgo, last)) continue;
     }
 
-    const res = await sendReminderNow(r.id);
+    const audience: SendAudience = r.clientRemindAt ? "client" : "auto";
+    const res = await sendReminderNow(r.id, { audience });
     if (res.ok) {
       sent++;
       await sql`
@@ -663,20 +737,89 @@ export async function markReminderResolved(reminderId: string): Promise<void> {
   `;
 }
 
-export async function markReminderPaid(reminderId: string): Promise<void> {
+export async function getReminderById(reminderId: string): Promise<Reminder | null> {
   const sql = getSql();
+  const rows = await sql`SELECT * FROM reminders WHERE id = ${reminderId}`;
+  const row = rows[0] as ReminderRow | undefined;
+  return row ? parseReminder(row) : null;
+}
+
+async function syncReminderStatusFromDocs(
+  reminderId: string,
+  depositType: Deposit["depositType"]
+): Promise<void> {
+  const sql = getSql();
+  const rows = await sql`SELECT * FROM reminders WHERE id = ${reminderId}`;
+  const row = rows[0] as ReminderRow | undefined;
+  if (!row) return;
+  const reminder = parseReminder(row);
+  const next = deriveReminderStatusFromDocs(reminder, depositType);
+  if (next === reminder.status) return;
   await sql`
     UPDATE reminders
-    SET paid_at = ${nowIso()}, status = 'resolved', updated_at = ${nowIso()}
+    SET status = ${next}, updated_at = ${nowIso()}
+    WHERE id = ${reminderId}
+  `;
+}
+
+/** @deprecated use syncReminderStatusFromDocs — נשמר לתאימות קריאות ישנות */
+async function resolveIfComplete(
+  reminderId: string,
+  depositType: Deposit["depositType"]
+): Promise<void> {
+  await syncReminderStatusFromDocs(reminderId, depositType);
+}
+
+export async function markReminderActionDone(reminderId: string): Promise<void> {
+  const sql = getSql();
+  const rows = await sql`SELECT * FROM reminders WHERE id = ${reminderId}`;
+  const row = rows[0] as ReminderRow | undefined;
+  if (!row) throw new Error("תזכורת לא נמצאה");
+  const reminder = parseReminder(row);
+  const dRows = await sql`SELECT * FROM deposits WHERE id = ${reminder.depositId}`;
+  const dRow = dRows[0] as DepositRow | undefined;
+  if (!dRow) throw new Error("הפקדה לא נמצאה");
+  const deposit = parseDeposit(dRow);
+  const now = nowIso();
+  await sql`
+    UPDATE reminders
+    SET action_done_at = ${now}, updated_at = ${now}
+    WHERE id = ${reminderId}
+  `;
+  await logMessage({
+    reminderId,
+    direction: "system",
+    subject: "סומן כבוצע",
+    body: `סומן שבוצעה הפעולה (${depositTypeLabel[deposit.depositType]}).`,
+    metadata: { kind: "action_done" },
+  });
+  await syncReminderStatusFromDocs(reminderId, deposit.depositType);
+}
+
+export async function markReminderPaid(reminderId: string): Promise<void> {
+  const sql = getSql();
+  const rows = await sql`SELECT * FROM reminders WHERE id = ${reminderId}`;
+  const row = rows[0] as ReminderRow | undefined;
+  if (!row) throw new Error("תזכורת לא נמצאה");
+  const reminder = parseReminder(row);
+  const dRows = await sql`SELECT * FROM deposits WHERE id = ${reminder.depositId}`;
+  const dRow = dRows[0] as DepositRow | undefined;
+  if (!dRow) throw new Error("הפקדה לא נמצאה");
+  const deposit = parseDeposit(dRow);
+  const now = nowIso();
+  await sql`
+    UPDATE reminders
+    SET paid_at = ${now}, payment_done_at = ${now}, updated_at = ${now}
     WHERE id = ${reminderId}
   `;
   await logMessage({
     reminderId,
     direction: "system",
     subject: "סומן כשולם",
-    body: "היועץ סימן שהתשלום התקבל. הנדנוד נעצר.",
+    body: "היועץ סימן שהתשלום התקבל.",
     metadata: { kind: "marked_paid" },
   });
+  await syncReminderStatusFromDocs(reminderId, deposit.depositType);
 }
 
 export async function setReminderStatus(
@@ -1004,7 +1147,7 @@ export async function notifyAdvisorSnoozeDue(reminderId: string): Promise<void> 
 }
 
 /**
- * דיגסט יומי ליועץ מסוים.
+ * דיגסט יומי ליועץ מסוים — כל הממתינים (פעולה / תשלום).
  */
 export async function sendAdvisorPendingDigestForUser(userId: string): Promise<{
   ok: boolean;
@@ -1014,14 +1157,16 @@ export async function sendAdvisorPendingDigestForUser(userId: string): Promise<{
   const sql = getSql();
   const ownerUser = await getUserById(userId);
   if (!ownerUser) return { ok: false, count: 0, error: "משתמש לא נמצא" };
+  if (!ownerUser.autoRemindersEnabled) return { ok: true, count: 0 };
   const advisor = userAsAdvisor(ownerUser);
 
-  const cutoff = addDays(new Date(), -1).toISOString();
   const rows = await sql`
     SELECT r.id AS rid,
            r.target_date AS target_date,
-           r.client_response_at AS client_response_at,
-           r.updated_at AS updated_at,
+           r.action_done_at AS action_done_at,
+           r.payment_done_at AS payment_done_at,
+           r.paid_at AS paid_at,
+           r.status AS status,
            c.name AS client_name,
            d.deposit_type AS deposit_type,
            d.amount AS amount
@@ -1029,16 +1174,24 @@ export async function sendAdvisorPendingDigestForUser(userId: string): Promise<{
     JOIN clients c ON c.id = r.client_id
     JOIN deposits d ON d.id = r.deposit_id
     WHERE r.owner_id = ${userId}
-      AND r.status = 'waiting_advisor'
-      AND r.paid_at IS NULL
-      AND COALESCE(r.client_response_at, r.updated_at) <= ${cutoff}
-    ORDER BY COALESCE(r.client_response_at, r.updated_at) ASC
+      AND r.status NOT IN ('resolved')
+      AND (
+        r.action_done_at IS NULL
+        OR (
+          d.deposit_type IN ('salary_slip', 'kollel_scholarship')
+          AND r.payment_done_at IS NULL
+          AND r.paid_at IS NULL
+        )
+      )
+    ORDER BY r.target_date ASC
   `;
   const digestRows = rows as Array<{
     rid: string;
     target_date: string;
-    client_response_at: string | null;
-    updated_at: string;
+    action_done_at: string | null;
+    payment_done_at: string | null;
+    paid_at: string | null;
+    status: string;
     client_name: string;
     deposit_type: Deposit["depositType"];
     amount: number;
@@ -1049,7 +1202,7 @@ export async function sendAdvisorPendingDigestForUser(userId: string): Promise<{
   const lastRows = await sql`
     SELECT sent_at FROM email_log
     WHERE to_addresses = ${JSON.stringify([advisor.email])}
-      AND subject LIKE '%תזכורות ממתינות לטיפולך%'
+      AND subject LIKE '%סיכום ממתינים%'
     ORDER BY sent_at DESC LIMIT 1
   `;
   const last = lastRows[0] as { sent_at: string } | undefined;
@@ -1060,29 +1213,82 @@ export async function sendAdvisorPendingDigestForUser(userId: string): Promise<{
     }
   }
 
-  const lines = digestRows.map((r) => {
+  const groups = {
+    actionPending: digestRows.filter((r) => !r.action_done_at),
+    paymentPending: digestRows.filter(
+      (r) =>
+        !!r.action_done_at &&
+        depositRequiresPayment(r.deposit_type) &&
+        !r.payment_done_at &&
+        !r.paid_at
+    ),
+    salaryActionNoPay: digestRows.filter(
+      (r) =>
+        r.deposit_type === "salary_slip" &&
+        !!r.action_done_at &&
+        !r.payment_done_at &&
+        !r.paid_at
+    ),
+    salaryPayNoAction: digestRows.filter(
+      (r) =>
+        r.deposit_type === "salary_slip" &&
+        !r.action_done_at &&
+        (!!r.payment_done_at || !!r.paid_at)
+    ),
+    scholarshipActionNoPay: digestRows.filter(
+      (r) =>
+        r.deposit_type === "kollel_scholarship" &&
+        !!r.action_done_at &&
+        !r.payment_done_at &&
+        !r.paid_at
+    ),
+    scholarshipPayNoAction: digestRows.filter(
+      (r) =>
+        r.deposit_type === "kollel_scholarship" &&
+        !r.action_done_at &&
+        (!!r.payment_done_at || !!r.paid_at)
+    ),
+  };
+
+  const line = (r: (typeof digestRows)[0]) => {
     const target = format(parseISO(r.target_date), "dd/MM/yyyy");
     return `• ${r.client_name} - ${depositTypeLabel[r.deposit_type]} ₪${formatAmount(r.amount)} (יעד ${target})`;
-  });
+  };
 
-  const subject = `📋 ${digestRows.length} תזכורות ממתינות לטיפולך`;
+  const subject = `סיכום ממתינים — ${digestRows.length} פריטים`;
   const baseUrl = process.env.APP_URL || "";
   const reminderLink = baseUrl ? `${baseUrl}/reminders` : "/reminders";
 
-  const body = [
+  const sections: string[] = [
     `שלום ${advisor.name},`,
     "",
-    `להלן ${digestRows.length} תזכורות שממתינות לטיפולך למעלה מ-24 שעות:`,
+    `סיכום יומי של תזכורות ממתינות (${digestRows.length}):`,
     "",
-    ...lines,
-    "",
-    `למעבר ללשונית תזכורות: ${reminderLink}`,
-  ].join("\n");
+  ];
+  if (groups.actionPending.length) {
+    sections.push(`ממתינים לביצוע פעולה (${groups.actionPending.length}):`);
+    sections.push(...groups.actionPending.map(line), "");
+  }
+  if (groups.paymentPending.length) {
+    sections.push(`בוצע ולא שולם (${groups.paymentPending.length}):`);
+    sections.push(...groups.paymentPending.map(line), "");
+  }
+  if (groups.salaryPayNoAction.length) {
+    sections.push(`תלוש — שולם ולא בוצע (${groups.salaryPayNoAction.length}):`);
+    sections.push(...groups.salaryPayNoAction.map(line), "");
+  }
+  if (groups.scholarshipPayNoAction.length) {
+    sections.push(
+      `מילגה — שולם ולא בוצע (${groups.scholarshipPayNoAction.length}):`
+    );
+    sections.push(...groups.scholarshipPayNoAction.map(line), "");
+  }
+  sections.push(`למעבר ללשונית תזכורות: ${reminderLink}`);
 
   const res = await sendEmail({
     to: [advisor.email],
     subject,
-    body,
+    body: sections.join("\n"),
     fromUserId: ownerUser.id,
   });
   return { ok: res.ok, count: digestRows.length, error: res.error };

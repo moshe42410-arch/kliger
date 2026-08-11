@@ -54,6 +54,9 @@ export function SettingsPanel({ initialUser }: { initialUser: User }) {
   const [name, setName] = useState(user.name);
   const [phone, setPhone] = useState(user.phone || "");
   const [companyName, setCompanyName] = useState(user.companyName || "");
+  const [autoRemindersEnabled, setAutoRemindersEnabled] = useState(
+    user.autoRemindersEnabled !== false
+  );
   const [savingProfile, setSavingProfile] = useState(false);
 
   // ----- Dashboard state -----
@@ -79,11 +82,15 @@ export function SettingsPanel({ initialUser }: { initialUser: User }) {
           name: name.trim(),
           phone: phone.trim(),
           companyName: companyName.trim(),
+          autoRemindersEnabled,
         }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || "שמירה נכשלה");
       setUser(j);
+      if (typeof j.autoRemindersEnabled === "boolean") {
+        setAutoRemindersEnabled(j.autoRemindersEnabled);
+      }
       notify("success", "הפרטים נשמרו");
       router.refresh();
     } catch (e) {
@@ -279,6 +286,25 @@ export function SettingsPanel({ initialUser }: { initialUser: User }) {
                 onChange={(e) => setCompanyName(e.target.value)}
                 placeholder="לדוגמה: קליגר ייעוץ פיננסי"
               />
+            </div>
+            <div className="md:col-span-2 rounded-xl border border-navy-100 bg-navy-50/40 p-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={autoRemindersEnabled}
+                  onChange={(e) => setAutoRemindersEnabled(e.target.checked)}
+                />
+                <span>
+                  <span className="block font-semibold text-navy-950">
+                    תזכורות אוטומטיות פעילות
+                  </span>
+                  <span className="block text-sm text-navy-600 mt-1">
+                    כשפעיל — המערכת שולחת תזכורות אוטומטיות ליועץ ומייל סיכום יומי
+                    של ממתינים. שליחה ללקוח תמיד ידנית ממסך התזכורות.
+                  </span>
+                </span>
+              </label>
             </div>
           </div>
 

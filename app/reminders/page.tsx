@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import {
   currentMonthBucket,
   getSql,
+  nowIso,
   parseAssociation,
   parseClient,
   parseDeposit,
@@ -10,6 +11,7 @@ import {
   type AssociationRow,
   type ClientRow,
   type DepositRow,
+  type Reminder,
   type ReminderRow,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -17,6 +19,7 @@ import {
   RemindersTab,
   type ReminderUploadInfo,
 } from "@/components/RemindersTab";
+import { deriveReminderStatusFromDocs } from "@/lib/reminder-inbox";
 
 export const dynamic = "force-dynamic";
 
@@ -59,9 +62,29 @@ export default async function RemindersPage() {
       `,
     ]);
 
-  const reminders = (reminderRows as ReminderRow[]).map(parseReminder);
-  const clients = (clientRows as ClientRow[]).map(parseClient);
   const deposits = (depositRows as DepositRow[]).map(parseDeposit);
+  const depositById = Object.fromEntries(deposits.map((d) => [d.id, d]));
+
+  // סנכרון סטטוס לפי תיעוד (בוצע/שולם) — כדי שלא יישאר «ממתין ללקוח» אחרי ששולם
+  const reminders: Reminder[] = [];
+  for (const row of reminderRows as ReminderRow[]) {
+    const r = parseReminder(row);
+    const dep = depositById[r.depositId];
+    if (dep) {
+      const next = deriveReminderStatusFromDocs(r, dep.depositType);
+      if (next !== r.status) {
+        await sql`
+          UPDATE reminders
+          SET status = ${next}, updated_at = ${nowIso()}
+          WHERE id = ${r.id}
+        `;
+        r.status = next;
+      }
+    }
+    reminders.push(r);
+  }
+
+  const clients = (clientRows as ClientRow[]).map(parseClient);
   const associations = (assocRows as AssociationRow[]).map(parseAssociation);
 
   const messageCounts: Record<string, { total: number; incoming: number }> = {};

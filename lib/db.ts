@@ -118,6 +118,38 @@ export type ReminderStatus =
   | "resolved"
   | "carried_over";
 export type UserRole = "admin" | "advisor";
+export type CaseType = "addition" | "purchase" | "renovation" | "expansion";
+export type ScholarshipDelivery = "cash" | "transfer";
+
+export interface IncomeLine {
+  status?: string | null;
+  person?: string | null;
+  amount: number;
+  notes?: string | null;
+  role?: string | null;
+}
+
+export interface LiabilityLine {
+  kind?: string | null;
+  where?: string | null;
+  monthly: number;
+  balance?: number | null;
+  endDate?: string | null;
+  takenIn?: string | null;
+}
+
+export interface IncomeSnapshot {
+  incomes: IncomeLine[];
+  liabilities: LiabilityLine[];
+  totalIncome?: number | null;
+  disposable40?: number | null;
+  disposable35?: number | null;
+  totalLiabilitiesMonthly?: number | null;
+  totalMonthlyRepayment?: number | null;
+  requestedIncome35?: number | null;
+  /** סכום החזר חודשי לכל 100,000 ₪ מסכום מבוקש */
+  amountPer100k?: number | null;
+}
 
 export interface UserRow {
   id: string;
@@ -137,6 +169,7 @@ export interface UserRow {
   gmail_token_expiry: string | null;
   gmail_connected_at: string | null;
   email_templates: string | null;
+  auto_reminders_enabled: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -155,6 +188,7 @@ export interface User {
   gmailEmail: string | null;
   gmailConnected: boolean;
   emailTemplates: Record<string, { subject: string; body: string }> | null;
+  autoRemindersEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -183,6 +217,7 @@ export function parseUser(row: UserRow): User {
     gmailEmail: row.gmail_email,
     gmailConnected: !!row.gmail_refresh_token,
     emailTemplates: parseEmailTemplatesJson(row.email_templates),
+    autoRemindersEnabled: row.auto_reminders_enabled == null ? true : !!row.auto_reminders_enabled,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -265,6 +300,16 @@ export interface ClientRow {
   phones: string;
   reminder_channel: ReminderChannel;
   notes: string | null;
+  case_type: CaseType | null;
+  bank: string | null;
+  required_amount: number | null;
+  property_value: number | null;
+  property_address: string | null;
+  drive_folder_url: string | null;
+  drive_folder_id: string | null;
+  income_snapshot: string | null;
+  income_snapshot_at: string | null;
+  income_source_filename: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -277,6 +322,16 @@ export interface Client {
   phones: string[];
   reminderChannel: ReminderChannel;
   notes: string | null;
+  caseType: CaseType | null;
+  bank: string | null;
+  requiredAmount: number | null;
+  propertyValue: number | null;
+  propertyAddress: string | null;
+  driveFolderUrl: string | null;
+  driveFolderId: string | null;
+  incomeSnapshot: IncomeSnapshot | null;
+  incomeSnapshotAt: string | null;
+  incomeSourceFilename: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -290,9 +345,38 @@ export function parseClient(row: ClientRow): Client {
     phones: safeJsonArray(row.phones),
     reminderChannel: row.reminder_channel,
     notes: row.notes,
+    caseType: (row.case_type as CaseType) || null,
+    bank: row.bank ?? null,
+    requiredAmount:
+      row.required_amount == null || row.required_amount === undefined
+        ? null
+        : Number(row.required_amount),
+    propertyValue:
+      row.property_value == null || row.property_value === undefined
+        ? null
+        : Number(row.property_value),
+    propertyAddress: row.property_address ?? null,
+    driveFolderUrl: row.drive_folder_url ?? null,
+    driveFolderId: row.drive_folder_id ?? null,
+    incomeSnapshot: parseIncomeSnapshotJson(row.income_snapshot),
+    incomeSnapshotAt: row.income_snapshot_at ?? null,
+    incomeSourceFilename: row.income_source_filename ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function parseIncomeSnapshotJson(raw: string | null): IncomeSnapshot | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return parsed as IncomeSnapshot;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
 }
 
 /* ---------- Deposits ---------- */
@@ -310,6 +394,7 @@ export interface DepositRow {
   start_date: string;
   end_date: string | null;
   reminder_recipient: ReminderRecipient;
+  scholarship_delivery: ScholarshipDelivery | null;
   active: number;
   notes: string | null;
   created_at: string;
@@ -329,6 +414,7 @@ export interface Deposit {
   startDate: string;
   endDate: string | null;
   reminderRecipient: ReminderRecipient;
+  scholarshipDelivery: ScholarshipDelivery | null;
   active: boolean;
   notes: string | null;
   createdAt: string;
@@ -349,6 +435,7 @@ export function parseDeposit(row: DepositRow): Deposit {
     startDate: row.start_date,
     endDate: row.end_date,
     reminderRecipient: row.reminder_recipient,
+    scholarshipDelivery: (row.scholarship_delivery as ScholarshipDelivery) || null,
     active: !!row.active,
     notes: row.notes,
     createdAt: row.created_at,
@@ -416,6 +503,8 @@ export interface ReminderRow {
   client_response: string | null;
   client_response_at: string | null;
   paid_at: string | null;
+  action_done_at: string | null;
+  payment_done_at: string | null;
   subject: string | null;
   body: string | null;
   upload_token: string | null;
@@ -442,6 +531,8 @@ export interface Reminder {
   clientResponse: string | null;
   clientResponseAt: string | null;
   paidAt: string | null;
+  actionDoneAt: string | null;
+  paymentDoneAt: string | null;
   subject: string | null;
   body: string | null;
   uploadToken: string | null;
@@ -469,6 +560,8 @@ export function parseReminder(row: ReminderRow): Reminder {
     clientResponse: row.client_response,
     clientResponseAt: row.client_response_at,
     paidAt: row.paid_at,
+    actionDoneAt: row.action_done_at ?? null,
+    paymentDoneAt: row.payment_done_at ?? row.paid_at ?? null,
     subject: row.subject,
     body: row.body,
     uploadToken: row.upload_token,

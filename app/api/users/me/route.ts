@@ -45,6 +45,11 @@ export async function PUT(req: NextRequest) {
         ? JSON.stringify(user.dashboardCards)
         : null;
 
+    const autoRemindersEnabled =
+      body.autoRemindersEnabled === undefined
+        ? user.autoRemindersEnabled
+        : Boolean(body.autoRemindersEnabled);
+
     const sql = getSql();
     await sql`
       UPDATE users
@@ -52,6 +57,7 @@ export async function PUT(req: NextRequest) {
           phone = ${phone},
           company_name = ${companyName},
           dashboard_cards = ${dashboardCards},
+          auto_reminders_enabled = ${autoRemindersEnabled ? 1 : 0},
           updated_at = ${nowIso()}
       WHERE id = ${user.id}
     `;

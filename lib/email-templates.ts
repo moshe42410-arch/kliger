@@ -96,6 +96,21 @@ export const TEMPLATE_VARIABLES: TemplateVar[] = [
   { key: "targetDate", label: "תאריך יעד", example: "15/09/2026" },
   { key: "depositType", label: "סוג ההפקדה", example: "תלוש שכר" },
   {
+    key: "clientActionLine",
+    label: "משפט פעולה ללקוח",
+    example: "יש לדאוג בהקדם למזומן בסך ₪1,000 עבור תלוש…",
+  },
+  {
+    key: "deliveryMethod",
+    label: "אופן מילגה (מזומן/העברה)",
+    example: "מזומן",
+  },
+  {
+    key: "timingPhrase",
+    label: "שנכנס / שעתיד להיכנס",
+    example: "שעתיד להיכנס",
+  },
+  {
     key: "uploadUrl",
     label: "קישור להעלאת אסמכתא",
     example: "https://kliger.co.il/upload/…",
@@ -114,12 +129,12 @@ export const TEMPLATE_VARIABLES: TemplateVar[] = [
 
 export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
   client_primary: {
-    subject: "תזכורת: הפקד {depositType} — {amount} עד {targetDate}",
+    subject: "תזכורת: {depositType} — {amount}",
     body: `לקוח יקר {clientName},
 
-יש להפקיד {depositType} בסך {amount} עד לתאריך {targetDate}.{accountBlock}
+{clientActionLine}.{accountBlock}
 
-לאחר ההפקדה, אנא העלה עובר-ושב או אסמכתא בקישור הבא:
+קישור להעלאת אסמכתא:
 {uploadUrl}
 
 בברכה,
@@ -127,12 +142,12 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
   },
 
   client_primary_advisor_flow: {
-    subject: "תזכורת: {depositType} מתקרב — {amount} ליום {targetDate}",
+    subject: "תזכורת: {depositType} — {amount}",
     body: `לקוח יקר {clientName},
 
-בתאריך {targetDate} מתקרב יעד להסדרת {depositType} בסך {amount}.{accountBlock}
+{clientActionLine}.{accountBlock}
 
-יש לוודא שהתשלום מועבר בזמן. אם כבר שולם — אפשר לאשר בקישור:
+קישור להעלאת אסמכתא:
 {uploadUrl}
 
 בברכה,
@@ -140,12 +155,12 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
   },
 
   client_verify: {
-    subject: "תזכורת דחופה: תשלום עבור {depositType} ליום {targetDate}",
+    subject: "תזכורת דחופה: {depositType} — {amount}",
     body: `לקוח יקר {clientName},
 
-טרם נרשם אצלנו תשלום עבור ה{depositType} בסך {amount} שיעדו היה בתאריך {targetDate}.{accountBlock}
+{clientActionLine}.{accountBlock}
 
-נא להסדיר את התשלום בהקדם. אם כבר שולם — נא להעלות אסמכתא כאן:
+נא להסדיר בהקדם. אם כבר בוצע — נא להעלות אסמכתא כאן:
 {uploadUrl}
 
 בברכה,
@@ -165,11 +180,11 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
   },
 
   advisor_primary_client_flow: {
-    subject: "מעקב: {clientName} צריך להפקיד {depositType} עד {targetDate}",
+    subject: "מעקב: {clientName} · {depositType} עד {targetDate}",
     body: `שלום {advisorName},
 
-הלקוח {clientName} אמור להפקיד {depositType} בסך {amount} עד לתאריך {targetDate}.
-המערכת שלחה לו קישור להעלאת עובר-ושב.
+הלקוח {clientName} אמור להסדיר {depositType} בסך {amount} עד לתאריך {targetDate}.
+ניתן לשלוח לו תזכורת ידנית ממסך התזכורות.
 
 בברכה,
 מערכת KLIGER`,
@@ -179,9 +194,8 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
     subject: "אימות תשלום — {clientName} · {depositType} · {amount}",
     body: `שלום {advisorName},
 
-בתאריך {targetDate} היה יעד הפקדה של {depositType} עבור {clientName} בסכום {amount}.
-נא ודא שהתשלום התקבל ממנו. אם התקבל — סמן במערכת "שולם" והנדנוד ייפסק.
-אם לא — המערכת תסלים תזכורת ישירות ללקוח בעוד {daysLate} ימים.
+בתאריך {targetDate} היה יעד של {depositType} עבור {clientName} בסכום {amount}.
+נא לסמן במערכת אם הפעולה בוצעה ואם התשלום התקבל.
 
 בברכה,
 מערכת KLIGER`,

@@ -25,7 +25,7 @@ export default async function RootLayout({
     try {
       const sql = getSql();
       const [waitingRow, carriedRow] = await Promise.all([
-        sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${user.id} AND status = 'waiting_advisor'`,
+        sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${user.id} AND action_done_at IS NULL AND status NOT IN ('resolved','snoozed','waiting_association')`,
         sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${user.id} AND status = 'carried_over'`,
       ]);
       const waitingAdvisor = Number(

@@ -25,6 +25,42 @@ export const DASHBOARD_CARDS: DashboardCardDef[] = [
     category: "pending",
   },
   {
+    id: "action_pending",
+    label: "ממתין לביצוע פעולה",
+    description: "תלוש / מילגה / העברה / מזומן שטרם בוצעו",
+    category: "pending",
+  },
+  {
+    id: "payment_pending",
+    label: "בוצע ולא שולם",
+    description: "פעולה בוצעה אך התשלום טרם סומן",
+    category: "pending",
+  },
+  {
+    id: "salary_done_unpaid",
+    label: "תלוש — בוצע לא שולם",
+    description: "תלושי משכורת שבוצעו ללא תשלום",
+    category: "pending",
+  },
+  {
+    id: "salary_paid_undone",
+    label: "תלוש — שולם לא בוצע",
+    description: "תשלום סומן אך התלוש טרם בוצע",
+    category: "pending",
+  },
+  {
+    id: "scholarship_done_unpaid",
+    label: "מילגה — בוצע לא שולם",
+    description: "מילגות שבוצעו ללא תשלום",
+    category: "pending",
+  },
+  {
+    id: "scholarship_paid_undone",
+    label: "מילגה — שולם לא בוצע",
+    description: "תשלום סומן אך המילגה טרם בוצעה",
+    category: "pending",
+  },
+  {
     id: "snoozed",
     label: "בהמתנה",
     description: "תזכורות שנדחו למועד מאוחר יותר",
@@ -57,11 +93,11 @@ export const DASHBOARD_CARDS: DashboardCardDef[] = [
 ];
 
 export const DEFAULT_DASHBOARD_CARDS = [
-  "waiting_client",
+  "action_pending",
+  "payment_pending",
+  "salary_done_unpaid",
+  "scholarship_done_unpaid",
   "waiting_advisor",
-  "waiting_association",
-  "snoozed",
-  "carried_over",
 ];
 
 export function getActiveDashboardCards(

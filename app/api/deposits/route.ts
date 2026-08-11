@@ -7,6 +7,7 @@ import {
   type DepositType,
   type DepositResponsibility,
   type ReminderRecipient,
+  type ScholarshipDelivery,
 } from "@/lib/db";
 import { getCurrentOwnerId } from "@/lib/auth";
 import { ensureRemindersForDeposit } from "@/lib/reminders";
@@ -21,6 +22,7 @@ const DEPOSIT_TYPES: DepositType[] = [
 ];
 const RESPONSIBILITIES: DepositResponsibility[] = ["advisor", "client"];
 const RECIPIENTS: ReminderRecipient[] = ["advisor", "client", "both"];
+const SCHOLARSHIP_DELIVERIES: ScholarshipDelivery[] = ["cash", "transfer"];
 
 export async function GET() {
   try {
@@ -49,6 +51,7 @@ interface DepositPayloadInput {
   reminderRecipient: ReminderRecipient;
   active: boolean;
   notes: string | null;
+  scholarshipDelivery: ScholarshipDelivery | null;
 }
 
 function validate(body: unknown): DepositPayloadInput {
@@ -82,11 +85,19 @@ function validate(body: unknown): DepositPayloadInput {
     throw new Error("תאריך סיום לא תקין");
   if (endDateRaw && endDateRaw < startDate)
     throw new Error("תאריך סיום חייב להיות אחרי תאריך ההתחלה");
-  const reminderRecipient = b.reminderRecipient as ReminderRecipient;
+  const reminderRecipient = (b.reminderRecipient ||
+    "advisor") as ReminderRecipient;
   if (!RECIPIENTS.includes(reminderRecipient))
     throw new Error("נמען התזכורת לא תקין");
   const active = b.active === undefined ? true : Boolean(b.active);
   const notes = b.notes ? String(b.notes) : null;
+  let scholarshipDelivery: ScholarshipDelivery | null = null;
+  if (depositType === "kollel_scholarship") {
+    const raw = (b.scholarshipDelivery || "cash") as ScholarshipDelivery;
+    if (!SCHOLARSHIP_DELIVERIES.includes(raw))
+      throw new Error("אופן מילגה לא תקין");
+    scholarshipDelivery = raw;
+  }
   return {
     clientId,
     associationId,
@@ -100,6 +111,7 @@ function validate(body: unknown): DepositPayloadInput {
     reminderRecipient,
     active,
     notes,
+    scholarshipDelivery,
   };
 }
 
@@ -132,11 +144,12 @@ export async function POST(req: NextRequest) {
       INSERT INTO deposits (
         id, owner_id, client_id, association_id, deposit_type, responsibility,
         amount, day_of_month, days_before_reminder, start_date, end_date,
-        reminder_recipient, active, notes
+        reminder_recipient, scholarship_delivery, active, notes
       ) VALUES (
         ${id}, ${ownerId}, ${v.clientId}, ${v.associationId}, ${v.depositType},
         ${v.responsibility}, ${v.amount}, ${v.dayOfMonth}, ${v.daysBeforeReminder},
-        ${v.startDate}, ${v.endDate}, ${v.reminderRecipient}, ${v.active ? 1 : 0}, ${v.notes}
+        ${v.startDate}, ${v.endDate}, ${v.reminderRecipient}, ${v.scholarshipDelivery},
+        ${v.active ? 1 : 0}, ${v.notes}
       )
     `;
 

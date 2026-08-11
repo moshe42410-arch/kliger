@@ -46,6 +46,7 @@ export default async function Home() {
   const sql = getSql();
   const ownerId = user.id;
   const monthBucket = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const nowIso = new Date().toISOString();
 
   const [
     clientsRow,
@@ -56,15 +57,27 @@ export default async function Home() {
     resolvedRow,
     carriedOverRow,
     snoozedRow,
+    actionPendingRow,
+    paymentPendingRow,
+    salaryDoneUnpaidRow,
+    salaryPaidUndoneRow,
+    scholarshipDoneUnpaidRow,
+    scholarshipPaidUndoneRow,
   ] = await Promise.all([
     sql`SELECT COUNT(*)::int as c FROM clients WHERE owner_id = ${ownerId}`,
     sql`SELECT COUNT(*)::int as c FROM deposits WHERE owner_id = ${ownerId} AND active = 1`,
-    sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${ownerId} AND status = 'waiting_client' AND month_bucket = ${monthBucket}`,
-    sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${ownerId} AND status = 'waiting_advisor' AND month_bucket = ${monthBucket}`,
-    sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${ownerId} AND status = 'waiting_association' AND month_bucket = ${monthBucket}`,
+    sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND r.status NOT IN ('snoozed','waiting_association') AND d.deposit_type IN ('salary_slip','kollel_scholarship') AND r.payment_done_at IS NULL AND r.paid_at IS NULL`,
+    sql`SELECT COUNT(*)::int as c FROM reminders r WHERE r.owner_id = ${ownerId} AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND r.status NOT IN ('snoozed','waiting_association','resolved') AND r.action_done_at IS NULL`,
+    sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${ownerId} AND status = 'waiting_association' AND month_bucket = ${monthBucket} AND scheduled_for <= ${nowIso}`,
     sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${ownerId} AND status = 'resolved' AND month_bucket = ${monthBucket}`,
     sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${ownerId} AND status = 'carried_over'`,
     sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${ownerId} AND status = 'snoozed'`,
+    sql`SELECT COUNT(*)::int as c FROM reminders r WHERE r.owner_id = ${ownerId} AND r.status != 'resolved' AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND r.action_done_at IS NULL`,
+    sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.status != 'resolved' AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND r.action_done_at IS NOT NULL AND d.deposit_type IN ('salary_slip','kollel_scholarship') AND r.payment_done_at IS NULL AND r.paid_at IS NULL`,
+    sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.status != 'resolved' AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND d.deposit_type = 'salary_slip' AND r.action_done_at IS NOT NULL AND r.payment_done_at IS NULL AND r.paid_at IS NULL`,
+    sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.status != 'resolved' AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND d.deposit_type = 'salary_slip' AND r.action_done_at IS NULL AND (r.payment_done_at IS NOT NULL OR r.paid_at IS NOT NULL)`,
+    sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.status != 'resolved' AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND d.deposit_type = 'kollel_scholarship' AND r.action_done_at IS NOT NULL AND r.payment_done_at IS NULL AND r.paid_at IS NULL`,
+    sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.status != 'resolved' AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND d.deposit_type = 'kollel_scholarship' AND r.action_done_at IS NULL AND (r.payment_done_at IS NOT NULL OR r.paid_at IS NOT NULL)`,
   ]);
 
   const getCount = (rows: unknown): number =>
@@ -77,6 +90,12 @@ export default async function Home() {
   const resolvedThisMonth = getCount(resolvedRow);
   const carriedOver = getCount(carriedOverRow);
   const snoozed = getCount(snoozedRow);
+  const actionPending = getCount(actionPendingRow);
+  const paymentPending = getCount(paymentPendingRow);
+  const salaryDoneUnpaid = getCount(salaryDoneUnpaidRow);
+  const salaryPaidUndone = getCount(salaryPaidUndoneRow);
+  const scholarshipDoneUnpaid = getCount(scholarshipDoneUnpaidRow);
+  const scholarshipPaidUndone = getCount(scholarshipPaidUndoneRow);
 
   const allCards: Record<string, KpiCard> = {
     waiting_client: {
@@ -86,7 +105,7 @@ export default async function Home() {
       icon: Clock,
       color: "amber",
       href: "/reminders?status=waiting_client",
-      hint: "עדיין לא התקבלה תגובה",
+      hint: "טרם שולם (גם אם בוצע)",
     },
     waiting_advisor: {
       id: "waiting_advisor",
@@ -95,7 +114,7 @@ export default async function Home() {
       icon: BellRing,
       color: "purple",
       href: "/reminders?status=waiting_advisor",
-      hint: "דרוש טיפול שלך",
+      hint: "טרם בוצעה הפעולה",
     },
     waiting_association: {
       id: "waiting_association",
@@ -105,6 +124,56 @@ export default async function Home() {
       color: "blue",
       href: "/reminders?status=waiting_association",
       hint: "הועבר לעמותה",
+    },
+    action_pending: {
+      id: "action_pending",
+      label: "ממתין לביצוע פעולה",
+      value: actionPending,
+      icon: AlertCircle,
+      color: "amber",
+      href: "/reminders",
+      hint: "טרם בוצע תלוש / מילגה / העברה",
+    },
+    payment_pending: {
+      id: "payment_pending",
+      label: "בוצע ולא שולם",
+      value: paymentPending,
+      icon: Banknote,
+      color: "rose",
+      href: "/reminders",
+      hint: "פעולה בוצעה — ממתין לתשלום",
+    },
+    salary_done_unpaid: {
+      id: "salary_done_unpaid",
+      label: "תלוש — בוצע לא שולם",
+      value: salaryDoneUnpaid,
+      icon: Banknote,
+      color: "gold",
+      href: "/reminders",
+    },
+    salary_paid_undone: {
+      id: "salary_paid_undone",
+      label: "תלוש — שולם לא בוצע",
+      value: salaryPaidUndone,
+      icon: Clock,
+      color: "amber",
+      href: "/reminders",
+    },
+    scholarship_done_unpaid: {
+      id: "scholarship_done_unpaid",
+      label: "מילגה — בוצע לא שולם",
+      value: scholarshipDoneUnpaid,
+      icon: Banknote,
+      color: "gold",
+      href: "/reminders",
+    },
+    scholarship_paid_undone: {
+      id: "scholarship_paid_undone",
+      label: "מילגה — שולם לא בוצע",
+      value: scholarshipPaidUndone,
+      icon: Clock,
+      color: "amber",
+      href: "/reminders",
     },
     snoozed: {
       id: "snoozed",
@@ -151,12 +220,36 @@ export default async function Home() {
     },
   };
 
+  const [neitherRow, doneUnpaidRow, paidUndoneRow, fullyDoneRow] =
+    await Promise.all([
+      sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND r.status != 'resolved' AND r.action_done_at IS NULL AND r.payment_done_at IS NULL AND r.paid_at IS NULL`,
+      sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND r.status != 'resolved' AND r.action_done_at IS NOT NULL AND d.deposit_type IN ('salary_slip','kollel_scholarship') AND r.payment_done_at IS NULL AND r.paid_at IS NULL`,
+      sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND r.status != 'resolved' AND r.action_done_at IS NULL AND (r.payment_done_at IS NOT NULL OR r.paid_at IS NOT NULL)`,
+      sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND (
+        (d.deposit_type IN ('salary_slip','kollel_scholarship') AND r.action_done_at IS NOT NULL AND (r.payment_done_at IS NOT NULL OR r.paid_at IS NOT NULL))
+        OR (d.deposit_type NOT IN ('salary_slip','kollel_scholarship') AND r.action_done_at IS NOT NULL)
+      )`,
+    ]);
+
+  const neitherCount = getCount(neitherRow);
+  const doneUnpaidCount = getCount(doneUnpaidRow);
+  const paidUndoneCount = getCount(paidUndoneRow);
+  const fullyDoneCount = getCount(fullyDoneRow);
+
   const activeIds = getActiveDashboardCards(user.dashboardCards || null);
   const stats = activeIds.map((id) => allCards[id]).filter(Boolean) as KpiCard[];
 
-  const totalPending =
-    waitingClient + waitingAdvisor + waitingAssociation + carriedOver;
-  const totalOpen = totalPending + snoozed;
+  // Override resolved card to documentation-based "both done"
+  if (allCards.resolved) {
+    allCards.resolved.value = fullyDoneCount;
+    allCards.resolved.hint = "בוצע וגם שולם (לפי תיעוד)";
+  }
+  if (allCards.payment_pending) {
+    allCards.payment_pending.value = doneUnpaidCount;
+  }
+  if (allCards.action_pending) {
+    // keep action pending from earlier query
+  }
 
   const now = new Date();
   const hour = now.getHours();
@@ -181,7 +274,7 @@ export default async function Home() {
           </div>
           <h1 className="section-title mb-3">לוח בקרה</h1>
           <p className="section-subtitle">
-            סקירה חודשית · ניהול תזכורות והפקדות במקום אחד
+            סקירה חודשית לפי תיעוד ביצוע ותשלום
           </p>
         </div>
 
@@ -212,26 +305,33 @@ export default async function Home() {
         </div>
       )}
 
-      {/* Highlight strip */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      {/* Highlight strip — לפי תיעוד */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <HighlightCard
-          title="פתוחים לטיפול"
-          value={totalPending}
-          description="סך התזכורות שמחייבות פעולה החודש"
+          title="לא בוצע ולא שולם"
+          value={neitherCount}
+          description="ממתין לביצוע ולתשלום"
           accent="amber"
-          href="/reminders"
+          href="/deposits"
         />
         <HighlightCard
-          title="סך פתוח"
-          value={totalOpen}
-          description="כולל ממתינים ובהמתנה"
+          title="בוצע ולא שולם"
+          value={doneUnpaidCount}
+          description="הפעולה בוצעה — ממתין לתשלום"
           accent="gold"
-          href="/reminders"
+          href="/deposits"
+        />
+        <HighlightCard
+          title="שולם ולא בוצע"
+          value={paidUndoneCount}
+          description="שולם — הפעולה טרם בוצעה"
+          accent="rose"
+          href="/deposits"
         />
         <HighlightCard
           title="טופלו החודש"
-          value={resolvedThisMonth}
-          description="תזכורות שהושלמו בחודש הנוכחי"
+          value={fullyDoneCount}
+          description="בוצע וגם שולם (לפי תיעוד)"
           accent="green"
           href="/reminders?status=resolved"
         />
@@ -324,13 +424,14 @@ function HighlightCard({
   title: string;
   value: number;
   description: string;
-  accent: "amber" | "gold" | "green";
+  accent: "amber" | "gold" | "green" | "rose";
   href: string;
 }) {
   const accentStyles: Record<string, string> = {
     amber: "border-amber-400/40 hover:border-amber-500/60",
     gold: "border-gold-400/45 hover:border-gold-500/70",
     green: "border-teal-400/40 hover:border-teal-500/70",
+    rose: "border-rose-400/40 hover:border-rose-500/60",
   };
   const gradients: Record<string, string> = {
     amber:
@@ -339,16 +440,20 @@ function HighlightCard({
       "linear-gradient(135deg, rgba(252,251,244,1) 0%, rgba(245,236,198,0.75) 100%)",
     green:
       "linear-gradient(135deg, rgba(252,251,244,1) 0%, rgba(211,245,238,0.7) 100%)",
+    rose:
+      "linear-gradient(135deg, rgba(252,251,244,1) 0%, rgba(254,226,226,0.7) 100%)",
   };
   const blobColor: Record<string, string> = {
     amber: "rgba(245,158,11,0.35)",
     gold: "rgba(212,175,55,0.4)",
     green: "rgba(54,153,137,0.32)",
+    rose: "rgba(244,63,94,0.3)",
   };
   const valueTint: Record<string, string> = {
     amber: "gradient-text-gold",
     gold: "gradient-text-gold",
     green: "gradient-text-teal",
+    rose: "text-rose-700",
   };
   return (
     <Link

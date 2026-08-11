@@ -5,6 +5,8 @@ import type {
   ReminderChannel,
   ReminderStatus,
   ReminderPhase,
+  CaseType,
+  ScholarshipDelivery,
 } from "./db";
 
 export type {
@@ -14,7 +16,54 @@ export type {
   ReminderChannel,
   ReminderStatus,
   ReminderPhase,
+  CaseType,
+  ScholarshipDelivery,
 };
+
+export const caseTypeLabel: Record<CaseType, string> = {
+  addition: "תוספת",
+  purchase: "רכישה",
+  renovation: "שיפוצים",
+  expansion: "הרחבה",
+};
+
+export const CASE_TYPES: CaseType[] = [
+  "addition",
+  "purchase",
+  "renovation",
+  "expansion",
+];
+
+export const BANK_OPTIONS = [
+  "פועלים",
+  "לאומי",
+  "דיסקונט",
+  "מזרחי טפחות",
+  "הבינלאומי",
+  "מרכנתיל",
+  "ירושלים",
+  "אחר",
+] as const;
+
+export const scholarshipDeliveryLabel: Record<ScholarshipDelivery, string> = {
+  cash: "מזומן",
+  transfer: "העברה",
+};
+
+/** Types that require both action + payment tracking */
+export function depositRequiresPayment(type: DepositType): boolean {
+  return type === "salary_slip" || type === "kollel_scholarship";
+}
+
+export function detectIncomeKeywords(notes: string | null | undefined): string[] {
+  if (!notes) return [];
+  const tags: string[] = [];
+  if (/תלוש|משכורת|שכר/.test(notes)) tags.push("תלוש");
+  if (/מילגה|מלגה|כולל/.test(notes)) tags.push("מילגה");
+  if (/שכירות/.test(notes)) tags.push("שכירות");
+  if (/עצמאי/.test(notes)) tags.push("עצמאי");
+  return tags;
+}
 
 export const depositTypeLabel: Record<DepositType, string> = {
   salary_slip: "תלוש משכורת",
@@ -53,8 +102,8 @@ export const reminderChannelLabel: Record<ReminderChannel, string> = {
 };
 
 export const reminderStatusLabel: Record<ReminderStatus, string> = {
-  waiting_client: "ממתין ללקוח",
-  waiting_advisor: "ממתין לטיפול יועץ",
+  waiting_client: "ממתין ללקוח (לא שולם)",
+  waiting_advisor: "ממתין לטיפול יועץ (לא בוצע)",
   waiting_association: "ממתין לטיפול עמותה",
   snoozed: "בהמתנה",
   resolved: "טופל",

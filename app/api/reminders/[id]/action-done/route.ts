@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { markReminderPaid, getReminderById } from "@/lib/reminders";
+import { markReminderActionDone, getReminderById } from "@/lib/reminders";
 import { assertReminderOwnership, AuthError } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export async function POST(
 ) {
   try {
     await assertReminderOwnership(params.id);
-    await markReminderPaid(params.id);
+    await markReminderActionDone(params.id);
     const reminder = await getReminderById(params.id);
     return NextResponse.json({ ok: true, reminder });
   } catch (err) {

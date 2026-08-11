@@ -23,6 +23,8 @@ import type {
   DepositType,
   DepositResponsibility,
   ReminderRecipient,
+  ScholarshipDelivery,
+  Reminder,
 } from "@/lib/db";
 import {
   depositTypeLabel,
@@ -31,6 +33,8 @@ import {
   reminderRecipientLabel,
   depositTypeDescription,
   defaultResponsibilityFor,
+  scholarshipDeliveryLabel,
+  depositRequiresPayment,
 } from "@/lib/types";
 
 interface FormState {
@@ -47,6 +51,7 @@ interface FormState {
   reminderRecipient: ReminderRecipient;
   notes: string;
   active: boolean;
+  scholarshipDelivery: ScholarshipDelivery;
 }
 
 function todayIso(): string {
@@ -69,6 +74,7 @@ const emptyForm: FormState = {
   reminderRecipient: "advisor",
   notes: "",
   active: true,
+  scholarshipDelivery: "cash",
 };
 
 const DAY_TEMPLATES = [5, 10, 15, 20, 25];
@@ -79,20 +85,26 @@ export function DepositsTab({
   clients,
   associations,
   reminderMeta,
+  openReminders = {},
 }: {
   initialDeposits: Deposit[];
   clients: Client[];
   associations: Association[];
   reminderMeta: Record<string, { sends: number; lastSent: string | null }>;
+  openReminders?: Record<string, Reminder>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [deposits, setDeposits] = useState<Deposit[]>(initialDeposits);
+  const [docs, setDocs] = useState<Record<string, Reminder>>(openReminders);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [docTab, setDocTab] = useState<
+    "pending" | "done" | "paid" | "archive"
+  >("pending");
 
   const clientMap = useMemo(() => {
     const m: Record<string, Client> = {};
@@ -120,6 +132,14 @@ export function DepositsTab({
     const t = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    setDocs(openReminders);
+  }, [openReminders]);
+
+  useEffect(() => {
+    setDeposits(initialDeposits);
+  }, [initialDeposits]);
 
   function onChangeDepositType(next: DepositType) {
     setForm((f) => ({
@@ -158,6 +178,7 @@ export function DepositsTab({
       reminderRecipient: d.reminderRecipient,
       notes: d.notes || "",
       active: d.active,
+      scholarshipDelivery: d.scholarshipDelivery || "cash",
     });
     setShowForm(true);
     setError(null);
@@ -195,6 +216,10 @@ export function DepositsTab({
         reminderRecipient: form.reminderRecipient,
         notes: form.notes,
         active: form.active,
+        scholarshipDelivery:
+          form.depositType === "kollel_scholarship"
+            ? form.scholarshipDelivery
+            : null,
       };
 
       const isEdit = Boolean(form.id);
@@ -243,17 +268,78 @@ export function DepositsTab({
     }
   }
 
-  async function sendNow(d: Deposit) {
-    const res = await fetch(`/api/deposits/${d.id}/send-now`, { method: "POST" });
+  async function sendNow(d: Deposit, to: "advisor" | "client" = "advisor") {
+    const res = await fetch(`/api/deposits/${d.id}/send-now`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to }),
+    });
     if (res.ok) {
       const j = await res.json().catch(() => ({}));
       setToast(
-        `נשלחו ${j.sent || 1} תזכורות ללקוח ${clientMap[d.clientId]?.name || ""}`
+        to === "client"
+          ? `נשלחה תזכורת ללקוח ${clientMap[d.clientId]?.name || ""}`
+          : `נשלחה תזכורת ליועץ`
       );
+      void j;
       router.refresh();
     } else {
       const j = await res.json().catch(() => ({}));
       setToast(`שגיאה: ${j.error || "שליחה נכשלה"}`);
+    }
+  }
+
+  async function markDocAction(depositId: string, reminderId: string) {
+    const now = new Date().toISOString();
+    const dep = deposits.find((d) => d.id === depositId);
+    const cur = docs[depositId];
+    if (cur && dep) {
+      const next = { ...cur, actionDoneAt: now };
+      setDocs((prev) => ({ ...prev, [depositId]: next }));
+      setDocTab(docBucket(dep, next));
+    }
+    const res = await fetch(`/api/reminders/${reminderId}/action-done`, {
+      method: "POST",
+    });
+    if (res.ok) {
+      const j = await res.json().catch(() => ({}));
+      if (j.reminder && dep) {
+        setDocs((prev) => ({ ...prev, [depositId]: j.reminder }));
+        setDocTab(docBucket(dep, j.reminder));
+      }
+      setToast("סומן כבוצע");
+      router.refresh();
+    } else {
+      const j = await res.json().catch(() => ({}));
+      setToast(`שגיאה: ${j.error || "סימון נכשל"}`);
+      router.refresh();
+    }
+  }
+
+  async function markDocPaid(depositId: string, reminderId: string) {
+    const now = new Date().toISOString();
+    const dep = deposits.find((d) => d.id === depositId);
+    const cur = docs[depositId];
+    if (cur && dep) {
+      const next = { ...cur, paymentDoneAt: now, paidAt: now };
+      setDocs((prev) => ({ ...prev, [depositId]: next }));
+      setDocTab(docBucket(dep, next));
+    }
+    const res = await fetch(`/api/reminders/${reminderId}/mark-paid`, {
+      method: "POST",
+    });
+    if (res.ok) {
+      const j = await res.json().catch(() => ({}));
+      if (j.reminder && dep) {
+        setDocs((prev) => ({ ...prev, [depositId]: j.reminder }));
+        setDocTab(docBucket(dep, j.reminder));
+      }
+      setToast("סומן כשולם");
+      router.refresh();
+    } else {
+      const j = await res.json().catch(() => ({}));
+      setToast(`שגיאה: ${j.error || "סימון נכשל"}`);
+      router.refresh();
     }
   }
 
@@ -265,6 +351,35 @@ export function DepositsTab({
       router.refresh();
     }
   }
+
+  function docBucket(
+    d: Deposit,
+    rem: Reminder | undefined
+  ): "pending" | "done" | "paid" | "archive" {
+    if (!rem) return "pending";
+    const action = !!rem.actionDoneAt;
+    const paid = !!(rem.paymentDoneAt || rem.paidAt);
+    const needsPay = depositRequiresPayment(d.depositType);
+    if (!needsPay) {
+      return action ? "archive" : "pending";
+    }
+    if (action && paid) return "archive";
+    if (action && !paid) return "done";
+    if (!action && paid) return "paid";
+    return "pending";
+  }
+
+  const filteredDeposits = useMemo(() => {
+    return deposits.filter((d) => docBucket(d, docs[d.id]) === docTab);
+  }, [deposits, docs, docTab]);
+
+  const tabCounts = useMemo(() => {
+    const c = { pending: 0, done: 0, paid: 0, archive: 0 };
+    for (const d of deposits) {
+      c[docBucket(d, docs[d.id])]++;
+    }
+    return c;
+  }, [deposits, docs]);
 
   return (
     <div className="max-w-6xl mx-auto animate-fade-in">
@@ -280,16 +395,52 @@ export function DepositsTab({
           {toast}
         </div>
       )}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="section-title mb-2">הפקדות</h1>
           <p className="section-subtitle">
-            ניהול הפקדות חוזרות, אחריות, ותזכורות אוטומטיות ליועץ וללקוח
+            ניהול הפקדות חוזרות, תיעוד חודשי, ותזכורות ליועץ וללקוח
           </p>
         </div>
         <button className="btn-primary" onClick={openNew}>
           <Plus size={18} /> הוספת הפקדה
         </button>
+      </div>
+
+      <div
+        className="flex flex-wrap gap-2 mb-6"
+        role="tablist"
+        aria-label="סינון לפי תיעוד"
+      >
+        {(
+          [
+            { key: "pending" as const, label: "ממתינות" },
+            { key: "done" as const, label: "בוצעו" },
+            { key: "paid" as const, label: "שולמו" },
+            { key: "archive" as const, label: "ארכיון" },
+          ]
+        ).map((t) => {
+          const active = docTab === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setDocTab(t.key)}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                active
+                  ? "bg-gradient-to-br from-teal-400 to-teal-600 text-white border-teal-500 shadow-md"
+                  : "bg-white text-navy-700 border-navy-950/10 hover:border-teal-400/50"
+              }`}
+            >
+              {t.label}{" "}
+              <span className={active ? "opacity-90" : "text-navy-500"}>
+                ({tabCounts[t.key]})
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {clients.length === 0 && (
@@ -301,25 +452,33 @@ export function DepositsTab({
         </div>
       )}
 
-      {deposits.length === 0 ? (
+      {filteredDeposits.length === 0 ? (
         <div className="card text-center py-16">
           <div className="inline-flex p-5 rounded-full bg-gold-500/15 mb-4">
             <CreditCard size={32} className="text-gold-600" />
           </div>
           <h3 className="text-xl font-heading font-bold text-navy-950 mb-2">
-            אין הפקדות עדיין
+            אין הפקדות בלשונית זו
           </h3>
-          <p className="text-navy-700">הוסף הפקדה ראשונה כדי להתחיל</p>
+          <p className="text-navy-700">
+            {deposits.length === 0
+              ? "הוסף הפקדה ראשונה כדי להתחיל"
+              : "כשתסמן בוצע / שולם — ההפקדה תעבור לכאן"}
+          </p>
         </div>
       ) : (
         <div className="grid gap-4">
-          {deposits.map((d) => {
+          {filteredDeposits.map((d) => {
             const client = clientMap[d.clientId];
             const assoc = d.associationId ? associationMap[d.associationId] : null;
             const meta = reminderMeta[d.id];
+            const rem = docs[d.id];
+            const needsPay = depositRequiresPayment(d.depositType);
+            const actionDone = !!rem?.actionDoneAt;
+            const paidDone = !!(rem?.paymentDoneAt || rem?.paidAt);
             return (
               <div key={d.id} className="card">
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-2">
                       <span className="chip">
@@ -365,6 +524,12 @@ export function DepositsTab({
                         תקופה: {d.startDate}
                         {d.endDate ? ` → ${d.endDate}` : " → פתוח"}
                       </span>
+                      {rem && (
+                        <span className="text-navy-500 text-xs">
+                          יעד החודש:{" "}
+                          {new Date(rem.targetDate).toLocaleDateString("he-IL")}
+                        </span>
+                      )}
                       {meta && meta.sends > 0 && (
                         <span className="text-navy-500 text-xs">
                           נשלחו {meta.sends} תזכורות
@@ -376,8 +541,51 @@ export function DepositsTab({
                         {d.notes}
                       </div>
                     )}
+
+                    <div className="mt-4">
+                      <p className="text-xs font-bold tracking-wide text-navy-600 mb-2">
+                        תיעוד החודש
+                      </p>
+                      {!rem ? (
+                        <p className="text-xs text-navy-500">
+                          תזכורת לחודש זה תיפתח אוטומטית במועד שהוגדר (
+                          {d.daysBeforeReminder} ימים לפני יום {d.dayOfMonth}) —
+                          ואז תופיע גם בלוח הבקרה
+                        </p>
+                      ) : (
+                        <div className="flex flex-wrap gap-3">
+                          {actionDone ? (
+                            <span className="inline-flex items-center px-5 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-bold shadow-md shadow-emerald-500/25">
+                              בוצע
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="inline-flex items-center px-5 py-2.5 rounded-xl border-2 border-emerald-500/50 bg-emerald-50 text-emerald-800 text-sm font-bold hover:bg-emerald-500 hover:text-white transition-colors"
+                              onClick={() => markDocAction(d.id, rem.id)}
+                            >
+                              סמן כבוצע
+                            </button>
+                          )}
+                          {needsPay &&
+                            (paidDone ? (
+                              <span className="inline-flex items-center px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold shadow-md shadow-amber-500/25">
+                                שולם
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="inline-flex items-center px-5 py-2.5 rounded-xl border-2 border-amber-500/50 bg-amber-50 text-amber-900 text-sm font-bold hover:bg-amber-500 hover:text-white transition-colors"
+                                onClick={() => markDocPaid(d.id, rem.id)}
+                              >
+                                סמן כשולם
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap shrink-0">
                     <label className="flex items-center gap-2 cursor-pointer select-none">
                       <span className="text-xs text-navy-600 font-medium">
                         {d.active ? "פעיל" : "כבוי"}
@@ -389,11 +597,19 @@ export function DepositsTab({
                     </label>
                     <button
                       className="btn-secondary text-sm"
-                      onClick={() => sendNow(d)}
+                      onClick={() => sendNow(d, "advisor")}
                       disabled={!d.active}
-                      title="שליחה מיידית"
+                      title="שליחה מיידית ליועץ — ללא הגבלה"
                     >
-                      <Send size={14} /> שליחה מיידית
+                      <Send size={14} /> שלח ליועץ
+                    </button>
+                    <button
+                      className="btn-secondary text-sm"
+                      onClick={() => sendNow(d, "client")}
+                      disabled={!d.active}
+                      title="שליחה מיידית ללקוח — ללא הגבלה"
+                    >
+                      <Send size={14} /> שלח ללקוח
                     </button>
                     <button
                       className="btn-ghost text-sm"
@@ -620,9 +836,39 @@ export function DepositsTab({
                 </div>
               </div>
 
+              {form.depositType === "kollel_scholarship" && (
+                <div>
+                  <label className="label">אופן מילגה בתזכורת ללקוח</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["cash", "transfer"] as ScholarshipDelivery[]).map(
+                      (m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() =>
+                            setForm({ ...form, scholarshipDelivery: m })
+                          }
+                          className={`p-2.5 rounded-xl border text-sm font-medium transition-all ${
+                            form.scholarshipDelivery === m
+                              ? "bg-gold-100 border-gold-400/80 text-navy-950 shadow-sm"
+                              : "bg-white border-navy-950/10 text-navy-800 hover:border-teal-500/50"
+                          }`}
+                        >
+                          {scholarshipDeliveryLabel[m]}
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* למי לשלוח */}
               <div>
                 <label className="label">למי לשלוח את התזכורת *</label>
+                <p className="text-xs text-navy-600 mb-2">
+                  שליחה אוטומטית היא ליועץ בלבד. שליחה ללקוח מתבצעת ידנית ממסך
+                  התזכורות.
+                </p>
                 <div className="grid grid-cols-3 gap-2">
                   {(["advisor", "client", "both"] as ReminderRecipient[]).map(
                     (r) => (

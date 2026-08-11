@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
   gmail_token_expiry TEXT,
   gmail_connected_at TEXT,
   email_templates TEXT,
+  auto_reminders_enabled INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS')),
   updated_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS'))
 );
@@ -41,6 +42,16 @@ CREATE TABLE IF NOT EXISTS clients (
   phones TEXT NOT NULL DEFAULT '[]',
   reminder_channel TEXT NOT NULL DEFAULT 'email',
   notes TEXT,
+  case_type TEXT,
+  bank TEXT,
+  required_amount DOUBLE PRECISION,
+  property_value DOUBLE PRECISION,
+  property_address TEXT,
+  drive_folder_url TEXT,
+  drive_folder_id TEXT,
+  income_snapshot TEXT,
+  income_snapshot_at TEXT,
+  income_source_filename TEXT,
   created_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS')),
   updated_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS'))
 );
@@ -70,7 +81,8 @@ CREATE TABLE IF NOT EXISTS deposits (
   days_before_reminder INTEGER NOT NULL DEFAULT 5,
   start_date TEXT NOT NULL,
   end_date TEXT,
-  reminder_recipient TEXT NOT NULL DEFAULT 'client',
+  reminder_recipient TEXT NOT NULL DEFAULT 'advisor',
+  scholarship_delivery TEXT,
   active INTEGER NOT NULL DEFAULT 1,
   notes TEXT,
   created_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS')),
@@ -92,6 +104,8 @@ CREATE TABLE IF NOT EXISTS reminders (
   client_response TEXT,
   client_response_at TEXT,
   paid_at TEXT,
+  action_done_at TEXT,
+  payment_done_at TEXT,
   subject TEXT,
   body TEXT,
   upload_token TEXT UNIQUE,

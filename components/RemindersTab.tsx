@@ -37,7 +37,12 @@ import {
   reminderPhaseLabel,
   reminderRecipientLabel,
   responsibilityLabel,
+  depositRequiresPayment,
 } from "@/lib/types";
+import {
+  deriveReminderStatusFromDocs,
+  reminderMatchesInboxTab,
+} from "@/lib/reminder-inbox";
 import { ReminderChat } from "./ReminderChat";
 
 const STATUS_TABS: { key: ReminderStatus; chip: string }[] = [
@@ -68,13 +73,13 @@ const STATUS_MOVE_OPTIONS: {
     key: "waiting_client",
     icon: Clock,
     tone: "amber",
-    description: "התזכורת תסומן כמחכה לתגובת הלקוח",
+    description: "ממתין לתשלום מהלקוח (לא שולם)",
   },
   {
     key: "waiting_advisor",
     icon: BellRing,
     tone: "purple",
-    description: "התזכורת תחזור לטיפול היועץ",
+    description: "ממתין לביצוע פעולה ע״י היועץ (לא בוצע)",
   },
   {
     key: "waiting_association",
@@ -92,7 +97,7 @@ const STATUS_MOVE_OPTIONS: {
     key: "resolved",
     icon: CheckCircle2,
     tone: "green",
-    description: "סימון כטופל — התזכורת תיסגר",
+    description: "טופל — בוצע וגם שולם (לפי תיעוד)",
   },
   {
     key: "carried_over",
@@ -201,6 +206,10 @@ export function RemindersTab({
     return () => clearTimeout(t);
   }, [toast]);
 
+  useEffect(() => {
+    setReminders(initialReminders);
+  }, [initialReminders]);
+
   const clientMap = useMemo(() => {
     const m: Record<string, Client> = {};
     clients.forEach((c) => (m[c.id] = c));
@@ -226,20 +235,124 @@ export function RemindersTab({
       resolved: 0,
       carried_over: 0,
     };
-    reminders.forEach((r) => (c[r.status] = (c[r.status] || 0) + 1));
+    for (const r of reminders) {
+      const dep = depositMap[r.depositId];
+      for (const tab of STATUS_TABS) {
+        if (reminderMatchesInboxTab(r, dep?.depositType, tab.key)) {
+          c[tab.key]++;
+        }
+      }
+    }
     return c;
-  }, [reminders]);
+  }, [reminders, depositMap]);
 
-  const filtered = reminders.filter((r) => r.status === activeTab);
+  const filtered = useMemo(() => {
+    return reminders.filter((r) =>
+      reminderMatchesInboxTab(
+        r,
+        depositMap[r.depositId]?.depositType,
+        activeTab
+      )
+    );
+  }, [reminders, depositMap, activeTab]);
 
-  async function sendAgain(r: Reminder) {
-    const res = await fetch(`/api/reminders/${r.id}/send`, { method: "POST" });
+  async function sendAgain(r: Reminder, to: "advisor" | "client" = "advisor") {
+    const res = await fetch(`/api/reminders/${r.id}/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to }),
+    });
     if (res.ok) {
-      setToast(`נשלחה תזכורת ל-${clientMap[r.clientId]?.name || "לקוח"}`);
+      setToast(
+        to === "client"
+          ? `נשלחה תזכורת ללקוח ${clientMap[r.clientId]?.name || ""}`
+          : `נשלחה תזכורת ליועץ`
+      );
       router.refresh();
     } else {
       const j = await res.json().catch(() => ({}));
       setToast(`שגיאה: ${j.error || "שליחה נכשלה"}`);
+    }
+  }
+
+  async function markActionDone(r: Reminder) {
+    const now = new Date().toISOString();
+    const dep = depositMap[r.depositId];
+    const optimistic = { ...r, actionDoneAt: now };
+    const nextStatus = deriveReminderStatusFromDocs(
+      optimistic,
+      dep?.depositType
+    );
+    setReminders((prev) =>
+      prev.map((x) =>
+        x.id === r.id ? { ...optimistic, status: nextStatus } : x
+      )
+    );
+    const res = await fetch(`/api/reminders/${r.id}/action-done`, {
+      method: "POST",
+    });
+    if (res.ok) {
+      const j = await res.json().catch(() => ({}));
+      if (j.reminder) {
+        setReminders((prev) =>
+          prev.map((x) => (x.id === r.id ? { ...x, ...j.reminder } : x))
+        );
+      }
+      setToast("סומן כבוצע");
+      router.refresh();
+    } else {
+      setReminders((prev) =>
+        prev.map((x) =>
+          x.id === r.id
+            ? { ...x, actionDoneAt: r.actionDoneAt, status: r.status }
+            : x
+        )
+      );
+      const j = await res.json().catch(() => ({}));
+      setToast(`שגיאה: ${j.error || "סימון נכשל"}`);
+    }
+  }
+
+  async function markPaid(r: Reminder) {
+    const now = new Date().toISOString();
+    const dep = depositMap[r.depositId];
+    const optimistic = { ...r, paymentDoneAt: now, paidAt: now };
+    const nextStatus = deriveReminderStatusFromDocs(
+      optimistic,
+      dep?.depositType
+    );
+    setReminders((prev) =>
+      prev.map((x) =>
+        x.id === r.id ? { ...optimistic, status: nextStatus } : x
+      )
+    );
+    const res = await fetch(`/api/reminders/${r.id}/mark-paid`, {
+      method: "POST",
+    });
+    if (res.ok) {
+      const j = await res.json().catch(() => ({}));
+      if (j.reminder) {
+        setReminders((prev) =>
+          prev.map((x) => (x.id === r.id ? { ...x, ...j.reminder } : x))
+        );
+      }
+      setToast("סומן כשולם");
+      router.refresh();
+    } else {
+      setReminders((prev) =>
+        prev.map((x) =>
+          x.id === r.id
+            ? {
+                ...x,
+                paymentDoneAt: r.paymentDoneAt,
+                paidAt: r.paidAt,
+                status: r.status,
+              }
+            : x
+        )
+      );
+      const j = await res.json().catch(() => ({}));
+      setToast(`שגיאה: ${j.error || "סימון כשולם נכשל"}`);
     }
   }
 
@@ -316,30 +429,6 @@ export function RemindersTab({
     }
   }
 
-  async function markPaid(r: Reminder) {
-    const res = await fetch(`/api/reminders/${r.id}/mark-paid`, {
-      method: "POST",
-    });
-    if (res.ok) {
-      setReminders((prev) =>
-        prev.map((x) =>
-          x.id === r.id
-            ? {
-                ...x,
-                status: "resolved" as const,
-                paidAt: new Date().toISOString(),
-              }
-            : x
-        )
-      );
-      setToast("סומן כשולם — הנדנוד נעצר");
-      router.refresh();
-    } else {
-      const j = await res.json().catch(() => ({}));
-      setToast(`שגיאה: ${j.error || "סימון כשולם נכשל"}`);
-    }
-  }
-
   async function moveStatus(r: Reminder, status: ReminderStatus) {
     const res = await fetch(`/api/reminders/${r.id}/status`, {
       method: "POST",
@@ -378,7 +467,8 @@ export function RemindersTab({
       <div className="mb-8">
         <h1 className="section-title mb-2">תזכורות</h1>
         <p className="section-subtitle">
-          כל התזכורות של החודש הנוכחי + תזכורות שלא טופלו מחודשים קודמים
+          לפי תיעוד: ממתין ללקוח = לא שולם · ממתין ליועץ = לא בוצע · טופל =
+          בוצע וגם שולם
         </p>
       </div>
 
@@ -591,12 +681,55 @@ export function RemindersTab({
 
                   <div className="flex flex-col gap-2 lg:w-64 shrink-0">
                     {r.status !== "resolved" && (
-                      <button
-                        className="btn-secondary text-sm"
-                        onClick={() => sendAgain(r)}
-                      >
-                        <Send size={14} /> שליחת תזכורת מיידית
-                      </button>
+                      <>
+                        <button
+                          className="btn-secondary text-sm"
+                          onClick={() => sendAgain(r, "advisor")}
+                        >
+                          <Send size={14} /> שלח תזכורת ליועץ
+                        </button>
+                        <button
+                          className="btn-secondary text-sm"
+                          onClick={() => sendAgain(r, "client")}
+                        >
+                          <Users size={14} /> שלח תזכורת ללקוח
+                        </button>
+                      </>
+                    )}
+                    {r.status !== "resolved" && (
+                      <div className="rounded-xl border border-navy-100 bg-navy-50/50 p-3 space-y-2">
+                        <p className="text-xs font-bold text-navy-700">מעקב</p>
+                        <div className="flex flex-wrap gap-2">
+                          {r.actionDoneAt ? (
+                            <span className="inline-flex px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold">
+                              בוצע
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="inline-flex px-3 py-1.5 rounded-lg border-2 border-emerald-500/40 bg-emerald-50 text-emerald-800 text-xs font-bold hover:bg-emerald-500 hover:text-white"
+                              onClick={() => markActionDone(r)}
+                            >
+                              סמן כבוצע
+                            </button>
+                          )}
+                          {deposit &&
+                            depositRequiresPayment(deposit.depositType) &&
+                            (r.paymentDoneAt || r.paidAt ? (
+                              <span className="inline-flex px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold">
+                                שולם
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="inline-flex px-3 py-1.5 rounded-lg border-2 border-amber-500/40 bg-amber-50 text-amber-900 text-xs font-bold hover:bg-amber-500 hover:text-white"
+                                onClick={() => markPaid(r)}
+                              >
+                                סמן כשולם
+                              </button>
+                            ))}
+                        </div>
+                      </div>
                     )}
                     <button
                       className="btn-secondary text-sm relative"
@@ -669,15 +802,6 @@ export function RemindersTab({
                           ? ` ${associationMap[deposit.associationId]?.name ?? ""}`
                           : ""}
                       </div>
-                    )}
-                    {r.phase === "verify_payment" && !r.paidAt && (
-                      <button
-                        className="btn-primary text-sm"
-                        onClick={() => markPaid(r)}
-                        title="עוצר את נדנוד אימות התשלום"
-                      >
-                        <BadgeCheck size={14} /> סמן כשולם
-                      </button>
                     )}
                     {r.status !== "resolved" && (
                       <button

@@ -112,7 +112,8 @@ export async function PUT(
         { error: "תאריך סיום חייב להיות אחרי תאריך ההתחלה" },
         { status: 400 }
       );
-    const reminderRecipient = b.reminderRecipient as ReminderRecipient;
+    const reminderRecipient = (b.reminderRecipient ||
+      "advisor") as ReminderRecipient;
     if (!RECIPIENTS.includes(reminderRecipient))
       return NextResponse.json(
         { error: "נמען התזכורת לא תקין" },
@@ -120,6 +121,17 @@ export async function PUT(
       );
     const notes = b.notes ? String(b.notes) : null;
     const active = b.active === undefined ? !!row.active : Boolean(b.active);
+    let scholarshipDelivery: string | null = null;
+    if (depositType === "kollel_scholarship") {
+      const raw = String(b.scholarshipDelivery || "cash");
+      if (raw !== "cash" && raw !== "transfer") {
+        return NextResponse.json(
+          { error: "אופן מילגה לא תקין" },
+          { status: 400 }
+        );
+      }
+      scholarshipDelivery = raw;
+    }
 
     const clientRows = (await sql`
       SELECT id FROM clients WHERE id = ${clientId} AND owner_id = ${ownerId}
@@ -149,6 +161,7 @@ export async function PUT(
         start_date = ${startDate},
         end_date = ${endDate},
         reminder_recipient = ${reminderRecipient},
+        scholarship_delivery = ${scholarshipDelivery},
         active = ${active ? 1 : 0},
         notes = ${notes},
         updated_at = ${nowIso()}

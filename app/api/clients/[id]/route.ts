@@ -3,12 +3,53 @@ import {
   getSql,
   nowIso,
   parseClient,
+  type CaseType,
   type ClientRow,
   type ReminderChannel,
 } from "@/lib/db";
 import { getCurrentOwnerId } from "@/lib/auth";
+import { CASE_TYPES } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+function parseOptionalNumber(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseCaseFields(body: Record<string, unknown>) {
+  const caseTypeRaw = body.caseType != null ? String(body.caseType) : null;
+  const caseType =
+    caseTypeRaw && (CASE_TYPES as string[]).includes(caseTypeRaw)
+      ? (caseTypeRaw as CaseType)
+      : null;
+  const bankRaw = body.bank != null ? String(body.bank).trim() : null;
+  const bank = bankRaw || null;
+  const requiredAmount = parseOptionalNumber(body.requiredAmount);
+  const propertyValue = parseOptionalNumber(body.propertyValue);
+  const propertyAddress =
+    body.propertyAddress != null
+      ? String(body.propertyAddress).trim() || null
+      : null;
+  const driveFolderUrl =
+    body.driveFolderUrl != null
+      ? String(body.driveFolderUrl).trim() || null
+      : null;
+  const driveFolderId =
+    body.driveFolderId != null
+      ? String(body.driveFolderId).trim() || null
+      : null;
+  return {
+    caseType,
+    bank,
+    requiredAmount,
+    propertyValue,
+    propertyAddress,
+    driveFolderUrl,
+    driveFolderId,
+  };
+}
 
 export async function GET(
   _req: NextRequest,
@@ -44,6 +85,7 @@ export async function PUT(
       .map((x: unknown) => String(x || "").trim())
       .filter(Boolean);
     const channel = (body.reminderChannel || "email") as ReminderChannel;
+    const caseFields = parseCaseFields(body);
     if (!name) return NextResponse.json({ error: "שם חובה" }, { status: 400 });
 
     const sql = getSql();
@@ -58,6 +100,13 @@ export async function PUT(
           emails = ${JSON.stringify(emails)},
           phones = ${JSON.stringify(phones)},
           reminder_channel = ${channel},
+          case_type = ${caseFields.caseType},
+          bank = ${caseFields.bank},
+          required_amount = ${caseFields.requiredAmount},
+          property_value = ${caseFields.propertyValue},
+          property_address = ${caseFields.propertyAddress},
+          drive_folder_url = ${caseFields.driveFolderUrl},
+          drive_folder_id = ${caseFields.driveFolderId},
           updated_at = ${nowIso()}
       WHERE id = ${params.id}
     `;
