@@ -119,6 +119,18 @@ export function DepositsTab({
   }, [associations]);
 
   useEffect(() => {
+    const tab = searchParams?.get("tab");
+    if (
+      tab === "pending" ||
+      tab === "done" ||
+      tab === "paid" ||
+      tab === "archive"
+    ) {
+      setDocTab(tab);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     const newClientId = searchParams?.get("newClientId");
     if (newClientId && clients.some((c) => c.id === newClientId)) {
       setForm({ ...emptyForm, clientId: newClientId });
@@ -289,7 +301,30 @@ export function DepositsTab({
     }
   }
 
-  async function markDocAction(depositId: string, reminderId: string) {
+  async function ensureDocReminder(depositId: string): Promise<Reminder | null> {
+    const existing = docs[depositId];
+    if (existing) return existing;
+    const res = await fetch(`/api/deposits/${depositId}/ensure-doc`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setToast(`שגיאה: ${j.error || "פתיחת תיעוד נכשלה"}`);
+      return null;
+    }
+    const j = await res.json();
+    const rem = j.reminder as Reminder;
+    setDocs((prev) => ({ ...prev, [depositId]: rem }));
+    return rem;
+  }
+
+  async function markDocAction(depositId: string, reminderId?: string) {
+    let rid = reminderId;
+    if (!rid) {
+      const rem = await ensureDocReminder(depositId);
+      if (!rem) return;
+      rid = rem.id;
+    }
     const now = new Date().toISOString();
     const dep = deposits.find((d) => d.id === depositId);
     const cur = docs[depositId];
@@ -298,7 +333,7 @@ export function DepositsTab({
       setDocs((prev) => ({ ...prev, [depositId]: next }));
       setDocTab(docBucket(dep, next));
     }
-    const res = await fetch(`/api/reminders/${reminderId}/action-done`, {
+    const res = await fetch(`/api/reminders/${rid}/action-done`, {
       method: "POST",
     });
     if (res.ok) {
@@ -316,7 +351,13 @@ export function DepositsTab({
     }
   }
 
-  async function markDocPaid(depositId: string, reminderId: string) {
+  async function markDocPaid(depositId: string, reminderId?: string) {
+    let rid = reminderId;
+    if (!rid) {
+      const rem = await ensureDocReminder(depositId);
+      if (!rem) return;
+      rid = rem.id;
+    }
     const now = new Date().toISOString();
     const dep = deposits.find((d) => d.id === depositId);
     const cur = docs[depositId];
@@ -325,7 +366,7 @@ export function DepositsTab({
       setDocs((prev) => ({ ...prev, [depositId]: next }));
       setDocTab(docBucket(dep, next));
     }
-    const res = await fetch(`/api/reminders/${reminderId}/mark-paid`, {
+    const res = await fetch(`/api/reminders/${rid}/mark-paid`, {
       method: "POST",
     });
     if (res.ok) {
@@ -402,13 +443,13 @@ export function DepositsTab({
             ניהול הפקדות חוזרות, תיעוד חודשי, ותזכורות ליועץ וללקוח
           </p>
         </div>
-        <button className="btn-primary" onClick={openNew}>
+        <button className="btn-primary w-full sm:w-auto" onClick={openNew}>
           <Plus size={18} /> הוספת הפקדה
         </button>
       </div>
 
       <div
-        className="flex flex-wrap gap-2 mb-6"
+        className="tabs-scroll"
         role="tablist"
         aria-label="סינון לפי תיעוד"
       >
@@ -540,42 +581,44 @@ export function DepositsTab({
                       <p className="text-xs font-bold tracking-wide text-navy-600 mb-2">
                         תיעוד החודש
                       </p>
-                      {!rem ? (
-                        <p className="text-xs text-navy-500">
-                          תזכורת לחודש זה תיפתח אוטומטית במועד שהוגדר (
-                          {d.daysBeforeReminder} ימים לפני יום {d.dayOfMonth}) —
-                          ואז תופיע גם בלוח הבקרה
-                        </p>
-                      ) : (
-                        <div className="flex flex-wrap gap-3">
-                          {actionDone ? (
-                            <span className="inline-flex items-center px-5 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-bold shadow-md shadow-emerald-500/25">
-                              בוצע
+                      <div className="flex flex-wrap gap-3">
+                        {actionDone ? (
+                          <span className="inline-flex items-center px-5 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-bold shadow-md shadow-emerald-500/25">
+                            בוצע
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="inline-flex items-center px-5 py-2.5 rounded-xl border-2 border-emerald-500/50 bg-emerald-50 text-emerald-800 text-sm font-bold hover:bg-emerald-500 hover:text-white transition-colors"
+                            onClick={() =>
+                              void markDocAction(d.id, rem?.id)
+                            }
+                          >
+                            סמן כבוצע
+                          </button>
+                        )}
+                        {needsPay &&
+                          (paidDone ? (
+                            <span className="inline-flex items-center px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold shadow-md shadow-amber-500/25">
+                              שולם
                             </span>
                           ) : (
                             <button
                               type="button"
-                              className="inline-flex items-center px-5 py-2.5 rounded-xl border-2 border-emerald-500/50 bg-emerald-50 text-emerald-800 text-sm font-bold hover:bg-emerald-500 hover:text-white transition-colors"
-                              onClick={() => markDocAction(d.id, rem.id)}
+                              className="inline-flex items-center px-5 py-2.5 rounded-xl border-2 border-amber-500/50 bg-amber-50 text-amber-900 text-sm font-bold hover:bg-amber-500 hover:text-white transition-colors"
+                              onClick={() =>
+                                void markDocPaid(d.id, rem?.id)
+                              }
                             >
-                              סמן כבוצע
+                              סמן כשולם
                             </button>
-                          )}
-                          {needsPay &&
-                            (paidDone ? (
-                              <span className="inline-flex items-center px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold shadow-md shadow-amber-500/25">
-                                שולם
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                className="inline-flex items-center px-5 py-2.5 rounded-xl border-2 border-amber-500/50 bg-amber-50 text-amber-900 text-sm font-bold hover:bg-amber-500 hover:text-white transition-colors"
-                                onClick={() => markDocPaid(d.id, rem.id)}
-                              >
-                                סמן כשולם
-                              </button>
-                            ))}
-                        </div>
+                          ))}
+                      </div>
+                      {!rem && (
+                        <p className="text-xs text-navy-500 mt-2">
+                          עדיין לא נפתחה תזכורת אוטומטית — סימון בוצע/שולם יפתח
+                          תיעוד לחודש הנוכחי עכשיו.
+                        </p>
                       )}
                     </div>
                   </div>
@@ -863,7 +906,7 @@ export function DepositsTab({
                   שליחה אוטומטית היא ליועץ בלבד. שליחה ללקוח מתבצעת ידנית ממסך
                   התזכורות.
                 </p>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {(["advisor", "client", "both"] as ReminderRecipient[]).map(
                     (r) => (
                       <button
@@ -886,7 +929,7 @@ export function DepositsTab({
               </div>
 
               {/* תקופה */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="label">תאריך התחלה *</label>
                   <input

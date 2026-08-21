@@ -104,15 +104,14 @@ export function ReminderChat({
   const depositLabel = deposit ? depositTypeLabel[deposit.depositType] : "";
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop !items-stretch sm:!items-center !p-0 sm:!p-4" onClick={onClose}>
       <div
-        className="modal !max-w-3xl !p-0 overflow-hidden flex flex-col"
+        className="modal !max-w-3xl !p-0 overflow-hidden flex flex-col !rounded-none sm:!rounded-3xl !max-h-none sm:!max-h-[90vh] w-full h-[100dvh] sm:h-[min(86vh,800px)]"
         onClick={(e) => e.stopPropagation()}
-        style={{ height: "min(86vh, 800px)" }}
       >
-        <div className="px-6 py-4 border-b border-navy-950/8 bg-cream-100 flex items-start justify-between gap-3">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-navy-950/8 bg-cream-100 flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 flex-1 min-w-0">
-            <div className="p-2.5 rounded-xl bg-teal-50 text-teal-600 shrink-0 border border-teal-200">
+            <div className="hidden sm:flex p-2.5 rounded-xl bg-navy-50 text-navy-700 shrink-0 border border-navy-100">
               <MessageSquare size={22} />
             </div>
             <div className="min-w-0">
@@ -147,7 +146,7 @@ export function ReminderChat({
 
         <div
           ref={scrollerRef}
-          className="flex-1 overflow-y-auto px-6 py-6 space-y-4 bg-gradient-to-b from-cream-100/60 to-cream-200/40"
+          className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 bg-gradient-to-b from-cream-100/60 to-cream-200/40"
         >
           {loading ? (
             <div className="text-center text-navy-500 py-8">טוען הודעות...</div>
@@ -163,23 +162,23 @@ export function ReminderChat({
           )}
         </div>
 
-        <div className="border-t border-navy-950/8 bg-white p-4">
-          <div className="flex gap-2 mb-3">
+        <div className="border-t border-navy-950/8 bg-white p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="flex flex-col sm:flex-row gap-2 mb-3">
             <button
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+              className={`flex-1 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
                 composeMode === "email"
-                  ? "bg-gradient-to-br from-teal-400 to-teal-600 text-white shadow-[0_6px_18px_-6px_rgba(54,153,137,0.5)]"
-                  : "bg-cream-100 text-navy-700 border border-navy-950/10 hover:border-teal-400/50"
+                  ? "bg-navy-950 text-white"
+                  : "bg-cream-100 text-navy-700 border border-navy-950/10 hover:border-navy-950/30"
               }`}
               onClick={() => setComposeMode("email")}
             >
               <Mail size={14} /> שלח מייל ללקוח
             </button>
             <button
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+              className={`flex-1 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
                 composeMode === "record"
-                  ? "bg-gradient-to-br from-gold-300 to-gold-500 text-navy-950 shadow-[0_6px_18px_-6px_rgba(212,175,55,0.5)]"
-                  : "bg-cream-100 text-navy-700 border border-navy-950/10 hover:border-gold-400/50"
+                  ? "bg-navy-950 text-white"
+                  : "bg-cream-100 text-navy-700 border border-navy-950/10 hover:border-navy-950/30"
               }`}
               onClick={() => setComposeMode("record")}
             >

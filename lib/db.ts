@@ -34,6 +34,42 @@ export type Sql = (
 let _sql: Sql | null = null;
 
 /**
+ * Resolve a Neon/Postgres URL.
+ * On some Windows machines a system DATABASE_URL (SQL Server) overrides
+ * .env.local — Next.js does not override existing env vars. Prefer
+ * POSTGRES_URL / NEON_DATABASE_URL, then any postgres DATABASE_URL.
+ */
+function resolveDatabaseUrl(): string {
+  const candidates = [
+    process.env.POSTGRES_URL,
+    process.env.NEON_DATABASE_URL,
+    process.env.DATABASE_URL,
+  ]
+    .map((v) => (typeof v === "string" ? v.trim() : ""))
+    .filter(Boolean);
+
+  const postgres = candidates.find((u) =>
+    /^postgres(ql)?:\/\//i.test(u)
+  );
+  if (postgres) return postgres;
+
+  const raw = process.env.DATABASE_URL?.trim() || "";
+  if (!raw) {
+    throw new Error(
+      "DATABASE_URL is not set. Get your connection string from https://console.neon.tech and add it to .env.local (dev) or Vercel Environment Variables (prod)."
+    );
+  }
+  if (/^sqlserver:/i.test(raw) || !/^postgres(ql)?:\/\//i.test(raw)) {
+    throw new Error(
+      "נמצא DATABASE_URL שאינו Postgres (כנראה משתנה מערכת Windows של SQL Server). " +
+        "הוסף ל-.env.local שורה: POSTGRES_URL=<כתובת Neon> " +
+        "או מחק/שנה את DATABASE_URL בהגדרות הסביבה של Windows."
+    );
+  }
+  return raw;
+}
+
+/**
  * Returns the singleton Neon SQL query function (tagged template).
  * Usage:
  *   const sql = getSql();
@@ -41,12 +77,7 @@ let _sql: Sql | null = null;
  */
 export function getSql(): Sql {
   if (_sql) return _sql;
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error(
-      "DATABASE_URL is not set. Get your connection string from https://console.neon.tech and add it to .env.local (dev) or Vercel Environment Variables (prod)."
-    );
-  }
+  const url = resolveDatabaseUrl();
   _sql = neon(url) as unknown as Sql;
   return _sql;
 }
@@ -305,6 +336,7 @@ export interface ClientRow {
   required_amount: number | null;
   property_value: number | null;
   property_address: string | null;
+  existing_mortgage: number | null;
   drive_folder_url: string | null;
   drive_folder_id: string | null;
   income_snapshot: string | null;
@@ -330,6 +362,8 @@ export interface Client {
   requiredAmount: number | null;
   propertyValue: number | null;
   propertyAddress: string | null;
+  /** יתרת משכנתא קיימת על הנכס (אופציונלי) */
+  existingMortgage: number | null;
   driveFolderUrl: string | null;
   driveFolderId: string | null;
   incomeSnapshot: IncomeSnapshot | null;
@@ -362,6 +396,10 @@ export function parseClient(row: ClientRow): Client {
         ? null
         : Number(row.property_value),
     propertyAddress: row.property_address ?? null,
+    existingMortgage:
+      row.existing_mortgage == null || row.existing_mortgage === undefined
+        ? null
+        : Number(row.existing_mortgage),
     driveFolderUrl: row.drive_folder_url ?? null,
     driveFolderId: row.drive_folder_id ?? null,
     incomeSnapshot: parseIncomeSnapshotJson(row.income_snapshot),
@@ -490,6 +528,43 @@ export function parseAssociation(row: AssociationRow): Association {
     branchNumber: row.branch_number,
     accountNumber: row.account_number,
     notes: row.notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/* ---------- Contacts (email recipients) ---------- */
+
+export interface ContactRow {
+  id: string;
+  owner_id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Contact {
+  id: string;
+  ownerId: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function parseContact(row: ContactRow): Contact {
+  return {
+    id: row.id,
+    ownerId: row.owner_id,
+    name: row.name,
+    email: row.email ?? null,
+    phone: row.phone ?? null,
+    notes: row.notes ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

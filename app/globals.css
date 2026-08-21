@@ -354,7 +354,7 @@ a:focus-visible {
 
 /* ───────────── Card ───────────── */
 .card {
-  @apply rounded-2xl p-6;
+  @apply rounded-2xl p-4 sm:p-6;
   position: relative;
   background: white;
   border: 1px solid rgba(0, 33, 71, 0.08);
@@ -401,8 +401,8 @@ a:focus-visible {
 .section-title {
   @apply font-heading font-black tracking-tight;
   color: var(--navy);
-  font-size: clamp(2.25rem, 1.7rem + 1.8vw, 3.75rem);
-  line-height: 1.05;
+  font-size: clamp(1.65rem, 1.25rem + 2vw, 3.75rem);
+  line-height: 1.1;
   letter-spacing: -0.015em;
 }
 .section-subtitle {
@@ -497,7 +497,7 @@ a:focus-visible {
 
 /* Filter tabs — navy, no teal */
 .tab-filter {
-  @apply inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border transition-colors;
+  @apply inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium border transition-colors shrink-0;
   border-radius: 9999px;
   background: #fff;
   color: #002147;
@@ -520,6 +520,30 @@ a:focus-visible {
 .tab-filter-active .tab-filter-count {
   background: rgba(255, 255, 255, 0.18);
   color: #fff;
+}
+
+/* Horizontal scroll for tab rows on narrow screens */
+.tabs-scroll {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  padding-bottom: 2px;
+  margin-bottom: 1.5rem;
+}
+@media (min-width: 640px) {
+  .tabs-scroll {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+}
+
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
 }
 
 /* ───────────── Chips ───────────── */
@@ -593,21 +617,32 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 12px;
   animation: fadeIn 0.2s ease-out;
 }
 
 .modal {
   width: 100%;
   max-width: 640px;
-  max-height: 90vh;
+  max-height: min(92vh, 100%);
   overflow-y: auto;
-  border-radius: 24px;
+  border-radius: 20px;
   background: white;
   border: 1px solid rgba(0, 33, 71, 0.1);
   box-shadow: 0 30px 80px -10px rgba(0, 33, 71, 0.35);
-  padding: 28px;
+  padding: 20px 16px;
   animation: slideIn 0.3s ease-out;
+}
+
+@media (min-width: 640px) {
+  .modal-backdrop {
+    padding: 16px;
+  }
+  .modal {
+    border-radius: 24px;
+    padding: 28px;
+    max-height: 90vh;
+  }
 }
 
 @keyframes fadeIn {
@@ -674,29 +709,42 @@ a:focus-visible {
 .topbar {
   position: sticky;
   top: 0;
-  z-index: 40;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 14px 24px;
-  background: rgba(252, 251, 244, 0.9);
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(252, 251, 244, 0.92);
   border-bottom: 1px solid rgba(0, 33, 71, 0.08);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
 }
 
+@media (min-width: 640px) {
+  .topbar {
+    gap: 16px;
+    padding: 14px 24px;
+  }
+}
+
 .avatar-btn {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 14px 6px 6px;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
   border-radius: 999px;
   background: white;
   border: 1px solid rgba(0, 33, 71, 0.12);
   color: var(--navy);
   cursor: pointer;
   transition: all 0.2s;
+}
+@media (min-width: 640px) {
+  .avatar-btn {
+    gap: 10px;
+    padding: 6px 14px 6px 6px;
+  }
 }
 .avatar-btn:hover {
   border-color: var(--teal);
@@ -851,7 +899,8 @@ a:focus-visible {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  min-width: 260px;
+  min-width: min(280px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
   border-radius: 18px;
   background: white;
   border: 1px solid rgba(0, 33, 71, 0.1);

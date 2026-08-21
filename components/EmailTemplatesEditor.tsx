@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Save,
   RotateCcw,
@@ -8,8 +8,11 @@ import {
   X,
   User as UserIcon,
   Briefcase,
+  Building2,
+  FileText,
   ChevronDown,
   Copy,
+  Mail,
 } from "lucide-react";
 
 interface Template {
@@ -20,8 +23,9 @@ interface TemplateMeta {
   id: string;
   label: string;
   description: string;
-  audience: "client" | "advisor";
-  hasUploadUrl: boolean;
+  category: "documents" | "reminders" | "ops";
+  audience: "client" | "advisor" | "association" | "other";
+  variableKeys: string[];
 }
 interface TemplateVar {
   key: string;
@@ -29,24 +33,20 @@ interface TemplateVar {
   example: string;
 }
 
-const TEMPLATE_VARIABLES: TemplateVar[] = [
-  { key: "clientName", label: "שם הלקוח", example: "יוסי כהן" },
-  { key: "advisorName", label: "שם היועץ", example: "משה קליגר" },
-  { key: "companyName", label: "שם החברה", example: "קליגר ייעוץ" },
-  { key: "amount", label: "סכום", example: "₪12,500" },
-  { key: "targetDate", label: "תאריך יעד", example: "15/09/2026" },
-  { key: "depositType", label: "סוג ההפקדה", example: "תלוש שכר" },
-  { key: "uploadUrl", label: "קישור אסמכתא", example: "https://kliger.co.il/upload/xxxxx" },
-  { key: "associationName", label: "שם עמותה", example: "עמותה לדוגמה" },
-  { key: "accountBlock", label: "פרטי חשבון", example: "מס' חשבון: 12345\n..." },
-  { key: "advisorPhone", label: "טלפון היועץ", example: "052-7144445" },
-  { key: "daysLate", label: "ימי איחור", example: "3" },
-];
+const CATEGORY_ORDER = ["documents", "reminders", "ops"] as const;
 
 export function EmailTemplatesEditor() {
   const [templates, setTemplates] = useState<Record<string, Template>>({});
   const [defaults, setDefaults] = useState<Record<string, Template>>({});
   const [meta, setMeta] = useState<TemplateMeta[]>([]);
+  const [variables, setVariables] = useState<TemplateVar[]>([]);
+  const [categoryLabels, setCategoryLabels] = useState<Record<string, string>>(
+    {
+      documents: "מסמכי לקוח",
+      reminders: "תזכורות הפקדות",
+      ops: "התראות מערכת",
+    }
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -66,7 +66,9 @@ export function EmailTemplatesEditor() {
         setTemplates(j.templates);
         setDefaults(j.defaults);
         setMeta(j.meta);
-        if (j.meta.length && !expanded) setExpanded(j.meta[0].id);
+        if (Array.isArray(j.variables)) setVariables(j.variables);
+        if (j.categoryLabels) setCategoryLabels(j.categoryLabels);
+        if (j.meta?.length && !expanded) setExpanded(j.meta[0].id);
       }
     } finally {
       setLoading(false);
@@ -87,7 +89,6 @@ export function EmailTemplatesEditor() {
   async function saveOne(id: string) {
     setSaving(id);
     try {
-      // שולחים תמיד את כל התבניות — השרת מסנן ריקות/זהות ל-default
       const res = await fetch("/api/users/me/email-templates", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -117,6 +118,21 @@ export function EmailTemplatesEditor() {
     setTimeout(() => setToast(null), 3000);
   }
 
+  const grouped = useMemo(() => {
+    const map = new Map<string, TemplateMeta[]>();
+    for (const cat of CATEGORY_ORDER) map.set(cat, []);
+    for (const m of meta) {
+      const list = map.get(m.category) || [];
+      list.push(m);
+      map.set(m.category, list);
+    }
+    return CATEGORY_ORDER.map((cat) => ({
+      cat,
+      label: categoryLabels[cat] || cat,
+      items: map.get(cat) || [],
+    })).filter((g) => g.items.length > 0);
+  }, [meta, categoryLabels]);
+
   if (loading) {
     return (
       <div className="card text-center text-navy-600 py-12">טוען תבניות...</div>
@@ -126,134 +142,165 @@ export function EmailTemplatesEditor() {
   return (
     <div className="card p-0 overflow-hidden">
       <div className="p-6 border-b border-navy-950/8">
-        <h2 className="text-2xl font-heading text-navy-950 mb-2">
-          עריכת תבניות מיילים
+        <h2 className="text-2xl font-heading text-navy-950 mb-2 flex items-center gap-2">
+          <Mail size={22} className="text-teal-600" /> ניסוח כל המיילים
         </h2>
         <p className="text-navy-700 text-sm leading-relaxed">
-          כאן אפשר להתאים את הניסוח של כל סוג תזכורת שנשלחת מהמערכת. השתמש
-          במשתנים כמו <code className="bg-cream-100 px-1.5 py-0.5 rounded font-mono text-xs" dir="ltr">{"{clientName}"}</code> —
-          המערכת תחליף אותם אוטומטית בזמן השליחה. תבנית שהשארת ריקה תשתמש בברירת
-          המחדל.
+          כאן מנוסחים כל המיילים שנשלחים מהמערכת — מסמכים, תזכורות והתראות.
+          השתמשו במשתנים כמו{" "}
+          <code
+            className="bg-cream-100 px-1.5 py-0.5 rounded font-mono text-xs"
+            dir="ltr"
+          >
+            {"{recipientName}"}
+          </code>{" "}
+          או{" "}
+          <code
+            className="bg-cream-100 px-1.5 py-0.5 rounded font-mono text-xs"
+            dir="ltr"
+          >
+            {"{fileList}"}
+          </code>
+          ; המערכת תחליף אותם אוטומטית בזמן השליחה.
         </p>
       </div>
 
-      <div className="divide-y divide-navy-950/8">
-        {meta.map((m) => {
-          const tpl = templates[m.id] || defaults[m.id];
-          const def = defaults[m.id];
-          const isCustomized =
-            tpl.subject !== def.subject || tpl.body !== def.body;
-          const isOpen = expanded === m.id;
-          return (
-            <div key={m.id}>
-              <button
-                onClick={() => setExpanded(isOpen ? null : m.id)}
-                className="w-full flex items-center gap-4 px-6 py-4 text-right hover:bg-cream-100/50 transition-colors"
-              >
-                <div
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    m.audience === "client"
-                      ? "bg-teal-100 text-teal-700"
-                      : "bg-gold-100 text-gold-700"
-                  }`}
-                >
-                  {m.audience === "client" ? (
-                    <UserIcon size={18} strokeWidth={1.75} />
-                  ) : (
-                    <Briefcase size={18} strokeWidth={1.75} />
+      {grouped.map((group) => (
+        <div key={group.cat}>
+          <div className="px-6 py-3 bg-navy-950 text-cream-50 text-sm font-semibold tracking-wide">
+            {group.label}
+          </div>
+          <div className="divide-y divide-navy-950/8">
+            {group.items.map((m) => {
+              const tpl = templates[m.id] || defaults[m.id];
+              const def = defaults[m.id];
+              const isCustomized =
+                tpl &&
+                def &&
+                (tpl.subject !== def.subject || tpl.body !== def.body);
+              const isOpen = expanded === m.id;
+              return (
+                <div key={m.id}>
+                  <button
+                    onClick={() => setExpanded(isOpen ? null : m.id)}
+                    className="w-full flex items-center gap-4 px-6 py-4 text-right hover:bg-cream-100/50 transition-colors"
+                    type="button"
+                  >
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        m.category === "documents"
+                          ? "bg-teal-100 text-teal-700"
+                          : m.audience === "advisor"
+                            ? "bg-gold-100 text-gold-700"
+                            : m.audience === "association"
+                              ? "bg-navy-100 text-navy-700"
+                              : "bg-teal-100 text-teal-700"
+                      }`}
+                    >
+                      {m.category === "documents" ? (
+                        <FileText size={18} strokeWidth={1.75} />
+                      ) : m.audience === "association" ? (
+                        <Building2 size={18} strokeWidth={1.75} />
+                      ) : m.audience === "advisor" ? (
+                        <Briefcase size={18} strokeWidth={1.75} />
+                      ) : (
+                        <UserIcon size={18} strokeWidth={1.75} />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-navy-950">
+                          {m.label}
+                        </span>
+                        {isCustomized && (
+                          <span className="text-[10px] bg-gold-500 text-navy-950 px-2 py-0.5 rounded-full font-bold tracking-wide">
+                            מותאם
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-navy-600 mt-0.5">
+                        {m.description}
+                      </div>
+                    </div>
+                    <ChevronDown
+                      size={18}
+                      className={`text-navy-500 transition-transform ${
+                        isOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {isOpen && tpl && (
+                    <div className="px-6 pb-6 bg-cream-100/30 space-y-4">
+                      <div>
+                        <label className="label">שורת נושא</label>
+                        <input
+                          className="input font-mono text-sm"
+                          value={tpl.subject}
+                          onChange={(e) =>
+                            updateField(m.id, "subject", e.target.value)
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <label className="label">גוף המייל</label>
+                        <textarea
+                          className="input min-h-[180px] font-mono text-sm leading-relaxed resize-y"
+                          value={tpl.body}
+                          onChange={(e) =>
+                            updateField(m.id, "body", e.target.value)
+                          }
+                          dir="rtl"
+                        />
+                      </div>
+
+                      <VariablePicker
+                        keys={m.variableKeys}
+                        allVars={variables}
+                        onInsert={(key) =>
+                          updateField(m.id, "body", `${tpl.body}{${key}}`)
+                        }
+                      />
+
+                      <div className="flex justify-end gap-2 flex-wrap pt-2">
+                        <button
+                          className="btn-ghost"
+                          onClick={() => setPreviewOf(m.id)}
+                          type="button"
+                        >
+                          <Eye size={16} /> תצוגה מקדימה
+                        </button>
+                        <button
+                          className="btn-ghost"
+                          onClick={() => resetToDefault(m.id)}
+                          type="button"
+                        >
+                          <RotateCcw size={16} /> שחזר לברירת מחדל
+                        </button>
+                        <button
+                          className="btn-primary"
+                          onClick={() => saveOne(m.id)}
+                          disabled={saving === m.id}
+                          type="button"
+                        >
+                          <Save size={16} />
+                          {saving === m.id ? "שומר..." : "שמור שינויים"}
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-navy-950">
-                      {m.label}
-                    </span>
-                    {isCustomized && (
-                      <span className="text-[10px] bg-gold-500 text-navy-950 px-2 py-0.5 rounded-full font-bold tracking-wide">
-                        מותאם
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-navy-600 mt-0.5">
-                    {m.description}
-                  </div>
-                </div>
-                <ChevronDown
-                  size={18}
-                  className={`text-navy-500 transition-transform ${
-                    isOpen ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
-
-              {isOpen && (
-                <div className="px-6 pb-6 bg-cream-100/30 space-y-4">
-                  <div>
-                    <label className="label">שורת נושא</label>
-                    <input
-                      className="input font-mono text-sm"
-                      value={tpl.subject}
-                      onChange={(e) =>
-                        updateField(m.id, "subject", e.target.value)
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label">גוף המייל</label>
-                    <textarea
-                      className="input min-h-[180px] font-mono text-sm leading-relaxed resize-y"
-                      value={tpl.body}
-                      onChange={(e) =>
-                        updateField(m.id, "body", e.target.value)
-                      }
-                      dir="rtl"
-                    />
-                  </div>
-
-                  <VariablePicker
-                    audience={m.audience}
-                    hasUploadUrl={m.hasUploadUrl}
-                    onInsert={(key) =>
-                      updateField(m.id, "body", `${tpl.body}{${key}}`)
-                    }
-                  />
-
-                  <div className="flex justify-end gap-2 flex-wrap pt-2">
-                    <button
-                      className="btn-ghost"
-                      onClick={() => setPreviewOf(m.id)}
-                      type="button"
-                    >
-                      <Eye size={16} /> תצוגה מקדימה
-                    </button>
-                    <button
-                      className="btn-ghost"
-                      onClick={() => resetToDefault(m.id)}
-                      type="button"
-                    >
-                      <RotateCcw size={16} /> שחזר לברירת מחדל
-                    </button>
-                    <button
-                      className="btn-primary"
-                      onClick={() => saveOne(m.id)}
-                      disabled={saving === m.id}
-                      type="button"
-                    >
-                      <Save size={16} />
-                      {saving === m.id ? "שומר..." : "שמור שינויים"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
 
       {previewOf && (
         <PreviewModal
           template={templates[previewOf] || defaults[previewOf]}
+          variables={variables}
           onClose={() => setPreviewOf(null)}
         />
       )}
@@ -268,36 +315,36 @@ export function EmailTemplatesEditor() {
 }
 
 function VariablePicker({
-  audience,
-  hasUploadUrl,
+  keys,
+  allVars,
   onInsert,
 }: {
-  audience: "advisor" | "client";
-  hasUploadUrl: boolean;
+  keys: string[];
+  allVars: TemplateVar[];
   onInsert: (key: string) => void;
 }) {
-  const vars = TEMPLATE_VARIABLES.filter((v) => {
-    if (v.key === "uploadUrl" && !hasUploadUrl) return false;
-    if (v.key === "daysLate" && audience !== "advisor") return false;
-    return true;
-  });
+  const set = new Set(keys);
+  const vars =
+    allVars.length > 0
+      ? allVars.filter((v) => set.has(v.key))
+      : keys.map((key) => ({ key, label: key, example: "" }));
 
   return (
     <div className="p-3 rounded-xl bg-white border border-navy-950/10">
       <div className="text-[11px] font-semibold text-navy-700 mb-2 tracking-wide">
-        משתנים זמינים (לחץ להעתקה — הדבק בגוף המייל)
+        משתנים זמינים (לחץ להוספה לגוף המייל)
       </div>
       <div className="flex flex-wrap gap-1.5">
         {vars.map((v) => (
           <button
             key={v.key}
             onClick={() => {
-              navigator.clipboard.writeText(`{${v.key}}`);
+              navigator.clipboard.writeText(`{${v.key}}`).catch(() => {});
               onInsert(v.key);
             }}
             type="button"
             className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cream-100 border border-navy-950/8 hover:bg-gold-100/70 hover:border-gold-400/60 transition-all"
-            title={`דוגמה: ${v.example}`}
+            title={v.example ? `דוגמה: ${v.example}` : undefined}
           >
             <code className="font-mono text-[11px] text-navy-950" dir="ltr">
               {`{${v.key}}`}
@@ -316,9 +363,11 @@ function VariablePicker({
 
 function PreviewModal({
   template,
+  variables,
   onClose,
 }: {
   template: Template;
+  variables: TemplateVar[];
   onClose: () => void;
 }) {
   const modalRef = useRef<HTMLDivElement>(null);
@@ -331,11 +380,11 @@ function PreviewModal({
   }, [onClose]);
 
   const previewVars: Record<string, string> = {};
-  TEMPLATE_VARIABLES.forEach((v) => {
+  variables.forEach((v) => {
     previewVars[v.key] = v.example;
   });
-  // accountBlock מיוחד — מציגים אותו רק אם קיים
-  previewVars.accountBlock = "\n\nמס' חשבון עמותה: 12-345-6789\nבנק לאומי, סניף 800";
+  previewVars.fileList = "מצורף דוח תוצאות עיון.pdf";
+  previewVars.accountBlock = "\n\nמס' חשבון עמותה: 12-345-6789";
 
   const renderedSubject = renderPreview(template.subject, previewVars);
   const renderedBody = renderPreview(template.body, previewVars);
@@ -352,7 +401,7 @@ function PreviewModal({
       >
         <div className="flex items-center justify-between p-4 border-b border-navy-950/10 bg-cream-100/70">
           <h3 className="text-lg font-heading text-navy-950">תצוגה מקדימה</h3>
-          <button onClick={onClose} className="btn-ghost !p-2">
+          <button onClick={onClose} className="btn-ghost !p-2" type="button">
             <X size={18} />
           </button>
         </div>
@@ -372,7 +421,7 @@ function PreviewModal({
             </div>
           </div>
           <div className="mt-4 text-[11px] text-navy-500 leading-relaxed">
-            * דוגמאות בלבד. הערכים האמיתיים יוזרקו לכל תזכורת בזמן שליחה.
+            * דוגמאות בלבד. הערכים האמיתיים יוזרקו בזמן שליחה.
           </div>
         </div>
       </div>

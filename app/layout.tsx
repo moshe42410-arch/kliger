@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Sidebar, type SidebarCounts } from "@/components/Sidebar";
-import { TopBar } from "@/components/TopBar";
+import { AppShell } from "@/components/AppShell";
+import type { SidebarCounts } from "@/components/Sidebar";
 import { getSql } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 
@@ -51,19 +51,9 @@ export default async function RootLayout({
           דלג לתוכן הראשי
         </a>
         {showChrome ? (
-          <div className="min-h-screen flex">
-            <Sidebar counts={counts} isAdmin={isAdmin} />
-            <div className="flex-1 min-w-0 flex flex-col">
-              <TopBar user={user} />
-              <main
-                id="main-content"
-                tabIndex={-1}
-                className="flex-1 p-6 md:p-10 outline-none"
-              >
-                {children}
-              </main>
-            </div>
-          </div>
+          <AppShell user={user} counts={counts} isAdmin={isAdmin}>
+            {children}
+          </AppShell>
         ) : (
           <main id="main-content" tabIndex={-1} className="min-h-screen">
             {children}

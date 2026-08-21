@@ -15,6 +15,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { ensureRemindersForDeposit } from "@/lib/reminders";
 import { DepositsTab } from "@/components/DepositsTab";
 import { depositRequiresPayment, type DepositType } from "@/lib/types";
+import { monthBucketOf } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -60,12 +61,17 @@ export default async function DepositsPage() {
     }
   }
 
-  // כל תזכורת שחלון הפתיחה שלה כבר הגיע (scheduled_for <= עכשיו)
+  // תזכורות לתיעוד: שחלון הפתיחה הגיע, או ששייכות לחודש הנוכחי
+  // (כדי לאפשר סימון בוצע/שולם גם לפני מועד התזכורת)
+  const currentBucket = monthBucketOf(new Date());
   const dueRemRows = await sql`
     SELECT * FROM reminders
     WHERE owner_id = ${ownerId}
       AND phase = 'primary'
-      AND scheduled_for <= ${nowIso}
+      AND (
+        scheduled_for <= ${nowIso}
+        OR month_bucket = ${currentBucket}
+      )
     ORDER BY target_date DESC
   `;
 

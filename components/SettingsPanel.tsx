@@ -205,7 +205,7 @@ export function SettingsPanel({ initialUser }: { initialUser: User }) {
           active={tab === "templates"}
           onClick={() => setTab("templates")}
           icon={MessageSquareQuote}
-          label="ניסוח מיילים"
+          label="ניסוח כל המיילים"
         />
         <TabButton
           active={tab === "dashboard"}
@@ -505,6 +505,10 @@ function EmailConnectionCard({
       title: "החיבור נכשל",
       body: "Google החזיר שגיאה. נסה שוב, ואם זה חוזר — בדוק שה־Redirect URI שהגדרת ב־Google Cloud זהה בדיוק לזה של המערכת.",
     },
+    google_invalid_secret: {
+      title: "סוד Google לא תקין",
+      body: "GOOGLE_CLIENT_SECRET ב-.env.local לא תואם ל-Client ID. העתיקו מ-Google Cloud Console → APIs & Services → Credentials את ה-Client secret העדכני, שמרו, הפעילו מחדש את השרת, וחברו שוב.",
+    },
     state_mismatch: {
       title: "החיבור פג תוקף",
       body: "החיבור לוקח יותר מדי זמן. לחץ שוב על 'חיבור לגוגל'.",
@@ -523,10 +527,12 @@ function EmailConnectionCard({
           <Mail size={24} className="text-teal-600" /> חיבור גוגל למייל
         </h2>
         <p className="text-navy-700 text-sm">
-          כדי שכל תזכורת/אסמכתא/דיגסט יישלחו מהמייל שלך (ולא מכתובת גנרית),
-          יש לחבר את חשבון הגוגל שלך למערכת. אנחנו משתמשים ב־OAuth2 של Google —
-          אתה תאשר במסך של Google ואנחנו נשתמש רק בהרשאת שליחת מיילים
-          (<code dir="ltr">gmail.send</code>).
+          כדי שתזכורות ומסמכים יישלחו מהמייל שלך, וכן כדי לסנכרן תיקיות לקוח
+          מ־Google Drive, חברו את חשבון הגוגל. המערכת מבקשת הרשאות{" "}
+          <code dir="ltr">gmail.send</code> ו־
+          <code dir="ltr">drive.readonly</code> בלבד. אם חיברתם בעבר — נתקו
+          וחברו מחדש כדי לאשר את הרשאת הדרייב. בדרייב: הפעילו גם את Google Drive
+          API בפרויקט Google Cloud.
         </p>
       </div>
 

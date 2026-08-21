@@ -6,9 +6,12 @@
  *   GOOGLE_CLIENT_SECRET
  *   GOOGLE_REDIRECT_URI  (מומלץ: {APP_URL}/api/auth/google/callback)
  *
- * ה־scope שאנחנו מבקשים: `gmail.send` בלבד (שליחה מטעם המשתמש, בלי קריאת דואר).
+ * ה־scope: gmail.send + drive.readonly + userinfo.email
+ * (שליחת מיילים + קריאת תיקיות/קבצים בדרייב).
  * מבקשים `access_type=offline` + `prompt=consent` כדי לקבל refresh_token.
  */
+
+import { getGoogleOAuthClient } from "./google-credentials";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -22,15 +25,19 @@ export interface OAuthEnv {
 }
 
 export function getOAuthEnv(): OAuthEnv | null {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri =
+  const creds = getGoogleOAuthClient();
+  const redirectUri = (
     process.env.GOOGLE_REDIRECT_URI ||
     (process.env.APP_URL
       ? `${process.env.APP_URL.replace(/\/$/, "")}/api/auth/google/callback`
-      : "");
-  if (!clientId || !clientSecret || !redirectUri) return null;
-  return { clientId, clientSecret, redirectUri };
+      : "")
+  ).trim();
+  if (!creds || !redirectUri) return null;
+  return {
+    clientId: creds.clientId,
+    clientSecret: creds.clientSecret,
+    redirectUri,
+  };
 }
 
 export function buildAuthUrl(state: string, env: OAuthEnv): string {
@@ -40,6 +47,7 @@ export function buildAuthUrl(state: string, env: OAuthEnv): string {
     response_type: "code",
     scope: [
       "https://www.googleapis.com/auth/gmail.send",
+      "https://www.googleapis.com/auth/drive.readonly",
       "https://www.googleapis.com/auth/userinfo.email",
     ].join(" "),
     access_type: "offline",

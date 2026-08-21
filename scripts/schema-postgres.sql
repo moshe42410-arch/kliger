@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS clients (
   required_amount DOUBLE PRECISION,
   property_value DOUBLE PRECISION,
   property_address TEXT,
+  existing_mortgage DOUBLE PRECISION,
   drive_folder_url TEXT,
   drive_folder_id TEXT,
   income_snapshot TEXT,
@@ -64,6 +65,17 @@ CREATE TABLE IF NOT EXISTS associations (
   bank_number TEXT,
   branch_number TEXT,
   account_number TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS')),
+  updated_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS'))
+);
+
+CREATE TABLE IF NOT EXISTS contacts (
+  id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
   notes TEXT,
   created_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS')),
   updated_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS'))
@@ -127,6 +139,25 @@ CREATE TABLE IF NOT EXISTS uploads (
   size INTEGER,
   uploaded_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS'))
 );
+
+CREATE TABLE IF NOT EXISTS client_documents (
+  id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL,
+  original_name TEXT NOT NULL,
+  mime_type TEXT,
+  size INTEGER,
+  uploaded_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS')),
+  source TEXT NOT NULL DEFAULT 'upload',
+  drive_file_id TEXT,
+  drive_web_view_link TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_client_documents_client
+  ON client_documents (client_id, uploaded_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_client_documents_drive_file
+  ON client_documents (client_id, drive_file_id)
+  WHERE drive_file_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,

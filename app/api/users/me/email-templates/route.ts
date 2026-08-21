@@ -3,6 +3,8 @@ import { getSql, nowIso, parseUser, type UserRow } from "@/lib/db";
 import { requireUser, AuthError } from "@/lib/auth";
 import {
   TEMPLATE_META,
+  TEMPLATE_VARIABLES,
+  TEMPLATE_CATEGORY_LABELS,
   DEFAULT_TEMPLATES,
   mergeTemplates,
   type TemplateId,
@@ -18,6 +20,8 @@ export async function GET() {
       templates: merged,
       defaults: DEFAULT_TEMPLATES,
       meta: TEMPLATE_META,
+      variables: TEMPLATE_VARIABLES,
+      categoryLabels: TEMPLATE_CATEGORY_LABELS,
     });
   } catch (err) {
     if (err instanceof AuthError) {
@@ -67,6 +71,8 @@ export async function PUT(req: NextRequest) {
       templates: mergeTemplates(fresh.emailTemplates),
       defaults: DEFAULT_TEMPLATES,
       meta: TEMPLATE_META,
+      variables: TEMPLATE_VARIABLES,
+      categoryLabels: TEMPLATE_CATEGORY_LABELS,
     });
   } catch (err) {
     if (err instanceof AuthError) {

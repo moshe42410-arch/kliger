@@ -28,6 +28,7 @@ function parseCaseFields(body: Record<string, unknown>) {
   const bank = bankRaw || null;
   const requiredAmount = parseOptionalNumber(body.requiredAmount);
   const propertyValue = parseOptionalNumber(body.propertyValue);
+  const existingMortgage = parseOptionalNumber(body.existingMortgage);
   const propertyAddress =
     body.propertyAddress != null
       ? String(body.propertyAddress).trim() || null
@@ -51,6 +52,7 @@ function parseCaseFields(body: Record<string, unknown>) {
     bank,
     requiredAmount,
     propertyValue,
+    existingMortgage,
     propertyAddress,
     driveFolderUrl,
     driveFolderId,
@@ -113,6 +115,7 @@ export async function PUT(
           bank = ${caseFields.bank},
           required_amount = ${caseFields.requiredAmount},
           property_value = ${caseFields.propertyValue},
+          existing_mortgage = ${caseFields.existingMortgage},
           property_address = ${caseFields.propertyAddress},
           drive_folder_url = ${caseFields.driveFolderUrl},
           drive_folder_id = ${caseFields.driveFolderId},

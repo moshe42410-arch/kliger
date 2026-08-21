@@ -131,7 +131,7 @@ export default async function Home() {
       value: actionPending,
       icon: AlertCircle,
       color: "amber",
-      href: "/reminders",
+      href: "/deposits?tab=pending",
       hint: "טרם בוצע תלוש / מילגה / העברה",
     },
     payment_pending: {
@@ -140,7 +140,7 @@ export default async function Home() {
       value: paymentPending,
       icon: Banknote,
       color: "rose",
-      href: "/reminders",
+      href: "/deposits?tab=done",
       hint: "פעולה בוצעה — ממתין לתשלום",
     },
     salary_done_unpaid: {
@@ -149,7 +149,7 @@ export default async function Home() {
       value: salaryDoneUnpaid,
       icon: Banknote,
       color: "gold",
-      href: "/reminders",
+      href: "/deposits?tab=done",
     },
     salary_paid_undone: {
       id: "salary_paid_undone",
@@ -157,7 +157,7 @@ export default async function Home() {
       value: salaryPaidUndone,
       icon: Clock,
       color: "amber",
-      href: "/reminders",
+      href: "/deposits?tab=paid",
     },
     scholarship_done_unpaid: {
       id: "scholarship_done_unpaid",
@@ -165,7 +165,7 @@ export default async function Home() {
       value: scholarshipDoneUnpaid,
       icon: Banknote,
       color: "gold",
-      href: "/reminders",
+      href: "/deposits?tab=done",
     },
     scholarship_paid_undone: {
       id: "scholarship_paid_undone",
@@ -173,7 +173,7 @@ export default async function Home() {
       value: scholarshipPaidUndone,
       icon: Clock,
       color: "amber",
-      href: "/reminders",
+      href: "/deposits?tab=paid",
     },
     snoozed: {
       id: "snoozed",
@@ -312,28 +312,28 @@ export default async function Home() {
           value={neitherCount}
           description="ממתין לביצוע ולתשלום"
           accent="amber"
-          href="/deposits"
+          href="/deposits?tab=pending"
         />
         <HighlightCard
           title="בוצע ולא שולם"
           value={doneUnpaidCount}
           description="הפעולה בוצעה — ממתין לתשלום"
           accent="gold"
-          href="/deposits"
+          href="/deposits?tab=done"
         />
         <HighlightCard
           title="שולם ולא בוצע"
           value={paidUndoneCount}
           description="שולם — הפעולה טרם בוצעה"
           accent="rose"
-          href="/deposits"
+          href="/deposits?tab=paid"
         />
         <HighlightCard
           title="טופלו החודש"
           value={fullyDoneCount}
           description="בוצע וגם שולם (לפי תיעוד)"
           accent="green"
-          href="/reminders?status=resolved"
+          href="/deposits?tab=archive"
         />
       </div>
 

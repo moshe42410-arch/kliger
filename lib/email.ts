@@ -1,6 +1,10 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { getSql, getUserById, type User } from "./db";
 import { v4 as uuid } from "uuid";
+import {
+  explainGoogleTokenError,
+  getGoogleOAuthClient,
+} from "./google-credentials";
 
 export interface EmailAttachment {
   filename: string;
@@ -17,9 +21,7 @@ export interface EmailAttachment {
  */
 
 function googleOAuthConfigured(): boolean {
-  return Boolean(
-    process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
-  );
+  return Boolean(getGoogleOAuthClient());
 }
 
 function fallbackSmtpConfigured(): boolean {
@@ -33,31 +35,23 @@ export function isEmailConfigured(): boolean {
 }
 
 async function refreshGoogleAccessToken(refreshToken: string): Promise<string> {
+  const creds = getGoogleOAuthClient();
+  if (!creds) {
+    throw new Error("GOOGLE_CLIENT_ID / SECRET לא מוגדרים");
+  }
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+      client_id: creds.clientId,
+      client_secret: creds.clientSecret,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
   });
   const text = await res.text();
   if (!res.ok) {
-    if (text.includes("invalid_client")) {
-      throw new Error(
-        "GOOGLE_CLIENT_SECRET ב-Vercel לא תואם ל-Google Cloud. " +
-          "שים ב-Vercel את הסוד הישן שמסתיים ב-QL9s (זה שעובד עם החיבור הנוכחי), " +
-          "או צור Secret חדש + חבר Gmail מחדש אחרי Redeploy."
-      );
-    }
-    if (text.includes("invalid_grant")) {
-      throw new Error(
-        "חיבור ה-Gmail פג תוקף. לך להגדרות → נתק → חבר מחדש עם Google."
-      );
-    }
-    throw new Error(`רענון טוקן Google נכשל: ${text.slice(0, 200)}`);
+    throw new Error(explainGoogleTokenError(text));
   }
   const json = JSON.parse(text) as { access_token?: string };
   if (!json.access_token) {

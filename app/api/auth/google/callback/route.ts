@@ -133,6 +133,10 @@ export async function GET(req: NextRequest) {
     );
   } catch (err) {
     console.error("[google oauth callback]", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("invalid_client")) {
+      return backTo("google_invalid_secret");
+    }
     return backTo("google_error");
   }
 }

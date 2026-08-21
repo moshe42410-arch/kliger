@@ -31,6 +31,7 @@ function parseCaseFields(body: Record<string, unknown>) {
       : bankRaw || null;
   const requiredAmount = parseOptionalNumber(body.requiredAmount);
   const propertyValue = parseOptionalNumber(body.propertyValue);
+  const existingMortgage = parseOptionalNumber(body.existingMortgage);
   const propertyAddress = body.propertyAddress
     ? String(body.propertyAddress).trim() || null
     : null;
@@ -54,6 +55,7 @@ function parseCaseFields(body: Record<string, unknown>) {
     bank,
     requiredAmount,
     propertyValue,
+    existingMortgage,
     propertyAddress,
     driveFolderUrl,
     driveFolderId,
@@ -103,14 +105,14 @@ export async function POST(req: NextRequest) {
     await sql`
       INSERT INTO clients (
         id, owner_id, name, emails, phones, reminder_channel,
-        case_type, bank, required_amount, property_value, property_address,
+        case_type, bank, required_amount, property_value, existing_mortgage, property_address,
         drive_folder_url, drive_folder_id,
         spouse_name, spouse_email, spouse_phone
       )
       VALUES (
         ${id}, ${ownerId}, ${name}, ${JSON.stringify(emails)}, ${JSON.stringify(phones)}, ${channel},
         ${caseFields.caseType}, ${caseFields.bank}, ${caseFields.requiredAmount},
-        ${caseFields.propertyValue}, ${caseFields.propertyAddress},
+        ${caseFields.propertyValue}, ${caseFields.existingMortgage}, ${caseFields.propertyAddress},
         ${caseFields.driveFolderUrl}, ${caseFields.driveFolderId},
         ${caseFields.spouseName}, ${caseFields.spouseEmail}, ${caseFields.spousePhone}
       )

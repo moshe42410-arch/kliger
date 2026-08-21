@@ -744,6 +744,47 @@ export async function getReminderById(reminderId: string): Promise<Reminder | nu
   return row ? parseReminder(row) : null;
 }
 
+/**
+ * מחזיר תזכורת primary לחודש הנוכחי (לתיעוד בוצע/שולם),
+ * ויוצר אותה במידת הצורך גם לפני מועד התזכורת.
+ */
+export async function getOrCreateCurrentMonthDocReminder(
+  deposit: Deposit
+): Promise<Reminder | null> {
+  const sql = getSql();
+  const bucket = monthBucketOf(new Date());
+
+  const existing = (await sql`
+    SELECT * FROM reminders
+    WHERE deposit_id = ${deposit.id}
+      AND phase = 'primary'
+      AND month_bucket = ${bucket}
+    ORDER BY target_date DESC
+    LIMIT 1
+  `) as ReminderRow[];
+  if (existing[0]) return parseReminder(existing[0]);
+
+  await ensureRemindersForDeposit(deposit, { force: true });
+
+  const after = (await sql`
+    SELECT * FROM reminders
+    WHERE deposit_id = ${deposit.id}
+      AND phase = 'primary'
+      AND month_bucket = ${bucket}
+    ORDER BY target_date DESC
+    LIMIT 1
+  `) as ReminderRow[];
+  if (after[0]) return parseReminder(after[0]);
+
+  const any = (await sql`
+    SELECT * FROM reminders
+    WHERE deposit_id = ${deposit.id} AND phase = 'primary'
+    ORDER BY target_date DESC
+    LIMIT 1
+  `) as ReminderRow[];
+  return any[0] ? parseReminder(any[0]) : null;
+}
+
 async function syncReminderStatusFromDocs(
   reminderId: string,
   depositType: Deposit["depositType"]
@@ -991,29 +1032,25 @@ export async function forwardReminderToAssociation(
 
   const typeLabel = depositTypeLabel[ctx.deposit.depositType];
   const targetStr = format(parseISO(ctx.reminder.targetDate), "dd/MM/yyyy");
-
-  const subject = `העברת אסמכתה לטיפול עמותה - ${ctx.client.name}`;
-  const body = [
-    `שלום ${ctx.association.name},`,
-    "",
-    `מצורפת אסמכתה שהתקבלה מהלקוח ${ctx.client.name} עבור הפקדה מסוג ${typeLabel}.`,
-    `סכום: ₪${formatAmount(ctx.deposit.amount)}`,
-    `תאריך יעד: ${targetStr}`,
-    ctx.client.emails.length
+  const ownerUser = await getUserById(ctx.reminder.ownerId);
+  const templates = mergeTemplates(ownerUser?.emailTemplates ?? null);
+  const rendered = renderTemplate(templates.association_transfer, {
+    associationName: ctx.association.name,
+    clientName: ctx.client.name,
+    depositType: typeLabel,
+    amount: `₪${formatAmount(ctx.deposit.amount)}`,
+    targetDate: targetStr,
+    fileCount: String(validAttachments.length),
+    clientEmail: ctx.client.emails.length
       ? `מייל הלקוח: ${ctx.client.emails.join(", ")}`
       : "",
-    ctx.client.phones.length
+    clientPhone: ctx.client.phones.length
       ? `טלפון הלקוח: ${ctx.client.phones.join(", ")}`
       : "",
-    "",
-    validAttachments.length > 0
-      ? `מצורפים ${validAttachments.length} קבצים שהלקוח העלה.`
-      : "לא צורפו קבצים.",
-    "",
-    "בברכה,",
-  ]
-    .filter(Boolean)
-    .join("\n");
+    companyName: ownerUser?.companyName || ownerUser?.name || "KLIGER",
+  });
+  const subject = rendered.subject;
+  const body = rendered.body;
 
   const res = await sendEmail({
     to: [ctx.association.email],
@@ -1065,22 +1102,21 @@ export async function notifyAdvisorFileUploaded(
   const advisor = userAsAdvisor(ownerUser);
 
   const targetStr = format(parseISO(ctx.reminder.targetDate), "dd/MM/yyyy");
-  const subject = `עובר-ושב מהלקוח ${ctx.client.name}`;
   const baseUrl = process.env.APP_URL || "";
   const reminderLink = baseUrl ? `${baseUrl}/reminders` : "/reminders";
-
-  const body = [
-    `שלום ${advisor.name},`,
-    "",
-    `הלקוח ${ctx.client.name} העלה עובר-ושב עבור ${depositTypeLabel[ctx.deposit.depositType]}.`,
-    `תאריך יעד: ${targetStr}`,
-    `סכום: ₪${formatAmount(ctx.deposit.amount)}`,
-    `שם הקובץ: ${originalName}`,
-    "",
-    `התזכורת עברה לקטגוריית "ממתין לטיפול יועץ" — נא לוודא ולסמן "שולם".`,
-    "",
-    `למעבר לתזכורות: ${reminderLink}`,
-  ].join("\n");
+  const templates = mergeTemplates(ownerUser.emailTemplates);
+  const rendered = renderTemplate(templates.advisor_file_uploaded, {
+    advisorName: advisor.name,
+    clientName: ctx.client.name,
+    depositType: depositTypeLabel[ctx.deposit.depositType],
+    targetDate: targetStr,
+    amount: `₪${formatAmount(ctx.deposit.amount)}`,
+    fileName: originalName,
+    remindersLink: reminderLink,
+    companyName: ownerUser.companyName || ownerUser.name || "KLIGER",
+  });
+  const subject = rendered.subject;
+  const body = rendered.body;
 
   const buf = await getBlobBytes(uploadedFilename);
   const attachments = buf
@@ -1255,40 +1291,42 @@ export async function sendAdvisorPendingDigestForUser(userId: string): Promise<{
     return `• ${r.client_name} - ${depositTypeLabel[r.deposit_type]} ₪${formatAmount(r.amount)} (יעד ${target})`;
   };
 
-  const subject = `סיכום ממתינים — ${digestRows.length} פריטים`;
   const baseUrl = process.env.APP_URL || "";
   const reminderLink = baseUrl ? `${baseUrl}/reminders` : "/reminders";
 
-  const sections: string[] = [
-    `שלום ${advisor.name},`,
-    "",
-    `סיכום יומי של תזכורות ממתינות (${digestRows.length}):`,
-    "",
-  ];
+  const digestParts: string[] = [];
   if (groups.actionPending.length) {
-    sections.push(`ממתינים לביצוע פעולה (${groups.actionPending.length}):`);
-    sections.push(...groups.actionPending.map(line), "");
+    digestParts.push(`ממתינים לביצוע פעולה (${groups.actionPending.length}):`);
+    digestParts.push(...groups.actionPending.map(line), "");
   }
   if (groups.paymentPending.length) {
-    sections.push(`בוצע ולא שולם (${groups.paymentPending.length}):`);
-    sections.push(...groups.paymentPending.map(line), "");
+    digestParts.push(`בוצע ולא שולם (${groups.paymentPending.length}):`);
+    digestParts.push(...groups.paymentPending.map(line), "");
   }
   if (groups.salaryPayNoAction.length) {
-    sections.push(`תלוש — שולם ולא בוצע (${groups.salaryPayNoAction.length}):`);
-    sections.push(...groups.salaryPayNoAction.map(line), "");
+    digestParts.push(`תלוש — שולם ולא בוצע (${groups.salaryPayNoAction.length}):`);
+    digestParts.push(...groups.salaryPayNoAction.map(line), "");
   }
   if (groups.scholarshipPayNoAction.length) {
-    sections.push(
+    digestParts.push(
       `מילגה — שולם ולא בוצע (${groups.scholarshipPayNoAction.length}):`
     );
-    sections.push(...groups.scholarshipPayNoAction.map(line), "");
+    digestParts.push(...groups.scholarshipPayNoAction.map(line), "");
   }
-  sections.push(`למעבר ללשונית תזכורות: ${reminderLink}`);
+
+  const templates = mergeTemplates(ownerUser.emailTemplates);
+  const rendered = renderTemplate(templates.waiting_digest, {
+    advisorName: advisor.name,
+    itemCount: String(digestRows.length),
+    digestBody: digestParts.join("\n").trim(),
+    remindersLink: reminderLink,
+    companyName: ownerUser.companyName || ownerUser.name || "KLIGER",
+  });
 
   const res = await sendEmail({
     to: [advisor.email],
-    subject,
-    body: sections.join("\n"),
+    subject: rendered.subject,
+    body: rendered.body,
     fromUserId: ownerUser.id,
   });
   return { ok: res.ok, count: digestRows.length, error: res.error };

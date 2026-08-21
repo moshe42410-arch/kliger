@@ -14,10 +14,17 @@ import {
   KeyRound,
   ShieldCheck,
   MessageSquareQuote,
+  Menu,
 } from "lucide-react";
 import type { User } from "@/lib/db";
 
-export function TopBar({ user }: { user: User | null }) {
+export function TopBar({
+  user,
+  onMenuClick,
+}: {
+  user: User | null;
+  onMenuClick?: () => void;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -60,15 +67,23 @@ export function TopBar({ user }: { user: User | null }) {
 
   return (
     <div className="topbar">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="w-11 h-11 rounded-xl shrink-0 flex items-center justify-center bg-gradient-to-br from-cream-100 to-white border border-gold-400/40">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        <button
+          type="button"
+          className="lg:hidden shrink-0 p-2.5 rounded-xl bg-white border border-navy-950/12 text-navy-950 hover:border-navy-950/30 hover:bg-cream-100 transition-colors"
+          aria-label="פתח תפריט ניווט"
+          onClick={onMenuClick}
+        >
+          <Menu size={20} strokeWidth={1.75} />
+        </button>
+        <div className="hidden sm:flex w-11 h-11 rounded-xl shrink-0 items-center justify-center bg-gradient-to-br from-cream-100 to-white border border-gold-400/40">
           <LayoutDashboard size={18} className="text-navy-950/80" strokeWidth={1.75} />
         </div>
         <div className="min-w-0">
-          <div className="text-[10px] text-gold-700 leading-none mb-1.5 font-medium tracking-[0.28em] uppercase">
+          <div className="hidden sm:block text-[10px] text-gold-700 leading-none mb-1.5 font-medium tracking-[0.28em] uppercase">
             Financial · Advisory
           </div>
-          <div className="text-lg text-navy-950 truncate font-heading tracking-wide">
+          <div className="text-base sm:text-lg text-navy-950 truncate font-heading tracking-wide">
             {title}
           </div>
         </div>
@@ -150,7 +165,7 @@ export function TopBar({ user }: { user: User | null }) {
               className="dropdown-item"
               onClick={() => setOpen(false)}
             >
-              <MessageSquareQuote size={16} /> ניסוח מיילים
+              <MessageSquareQuote size={16} /> ניסוח כל המיילים
             </Link>
             <Link
               href="/settings?tab=dashboard"
@@ -202,6 +217,7 @@ export function TopBar({ user }: { user: User | null }) {
 function pageTitle(pathname: string | null) {
   if (!pathname || pathname === "/") return "לוח בקרה";
   if (pathname.startsWith("/clients")) return "לקוחות";
+  if (pathname.startsWith("/contacts")) return "אנשי קשר";
   if (pathname.startsWith("/deposits")) return "הפקדות";
   if (pathname.startsWith("/associations")) return "עמותות";
   if (pathname.startsWith("/reminders")) return "תזכורות";

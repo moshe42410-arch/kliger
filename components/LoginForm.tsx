@@ -167,6 +167,11 @@ function getNoticeInfo(code: string): NoticeInfo {
         text: "המשתמש שלך הושבת. פנה למנהל המערכת.",
         tone: "error",
       };
+    case "google_invalid_secret":
+      return {
+        text: "סוד Google (CLIENT_SECRET) לא תואם. עדכנו ב-.env.local את GOOGLE_CLIENT_SECRET מ-Google Cloud Console, הפעילו מחדש את השרת, והתחברו שוב — או היכנסו עם מייל וסיסמה.",
+        tone: "error",
+      };
     case "google_error":
       return {
         text: "החיבור עם Google נכשל. נסה שוב, ואם זה חוזר — התחבר עם מייל וסיסמה.",

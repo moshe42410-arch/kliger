@@ -36,6 +36,7 @@ interface ClientFormState {
   bank: string;
   requiredAmount: string;
   propertyValue: string;
+  existingMortgage: string;
   propertyAddress: string;
   spouseName: string;
   spouseEmail: string;
@@ -51,6 +52,7 @@ const emptyForm: ClientFormState = {
   bank: "",
   requiredAmount: "",
   propertyValue: "",
+  existingMortgage: "",
   propertyAddress: "",
   spouseName: "",
   spouseEmail: "",
@@ -73,18 +75,56 @@ function formatILS(n: number | null | undefined): string {
 /** אחוז מימון = סכום מבוקש / שווי נכס */
 function financingPercent(
   requiredAmount: number | null | undefined,
-  propertyValue: number | null | undefined
+  propertyValue: number | null | undefined,
+  existingMortgage?: number | null | undefined
 ): number | null {
   if (
-    requiredAmount == null ||
     propertyValue == null ||
-    !Number.isFinite(requiredAmount) ||
     !Number.isFinite(propertyValue) ||
     propertyValue <= 0
   ) {
     return null;
   }
-  return (requiredAmount / propertyValue) * 100;
+  const requested =
+    requiredAmount != null && Number.isFinite(requiredAmount)
+      ? Math.max(0, requiredAmount)
+      : 0;
+  const existing =
+    existingMortgage != null && Number.isFinite(existingMortgage)
+      ? Math.max(0, existingMortgage)
+      : 0;
+  if (requested <= 0 && existing <= 0) return null;
+  return ((requested + existing) / propertyValue) * 100;
+}
+
+function financingBreakdown(
+  requiredAmount: number | null | undefined,
+  propertyValue: number | null | undefined,
+  existingMortgage?: number | null | undefined
+): { requestedPct: number | null; existingPct: number | null; totalPct: number | null } {
+  if (
+    propertyValue == null ||
+    !Number.isFinite(propertyValue) ||
+    propertyValue <= 0
+  ) {
+    return { requestedPct: null, existingPct: null, totalPct: null };
+  }
+  const requested =
+    requiredAmount != null && Number.isFinite(requiredAmount)
+      ? Math.max(0, requiredAmount)
+      : 0;
+  const existing =
+    existingMortgage != null && Number.isFinite(existingMortgage)
+      ? Math.max(0, existingMortgage)
+      : 0;
+  return {
+    requestedPct: requested > 0 ? (requested / propertyValue) * 100 : null,
+    existingPct: existing > 0 ? (existing / propertyValue) * 100 : null,
+    totalPct:
+      requested > 0 || existing > 0
+        ? ((requested + existing) / propertyValue) * 100
+        : null,
+  };
 }
 
 function formatPercent(n: number): string {
@@ -154,6 +194,8 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
       bank: c.bank || "",
       requiredAmount: c.requiredAmount != null ? String(c.requiredAmount) : "",
       propertyValue: c.propertyValue != null ? String(c.propertyValue) : "",
+      existingMortgage:
+        c.existingMortgage != null ? String(c.existingMortgage) : "",
       propertyAddress: c.propertyAddress || "",
       spouseName: c.spouseName || "",
       spouseEmail: c.spouseEmail || "",
@@ -176,6 +218,9 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
         bank: form.bank || null,
         requiredAmount: form.requiredAmount ? Number(form.requiredAmount) : null,
         propertyValue: form.propertyValue ? Number(form.propertyValue) : null,
+        existingMortgage: form.existingMortgage
+          ? Number(form.existingMortgage)
+          : null,
         propertyAddress: form.propertyAddress.trim() || null,
         spouseName: form.spouseName.trim() || null,
         spouseEmail: form.spouseEmail.trim() || null,
@@ -294,7 +339,7 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
           <h1 className="section-title mb-2">לקוחות</h1>
           <p className="section-subtitle">ניהול תיקי הלקוחות של המשרד</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <input
             ref={fileRef}
             type="file"
@@ -324,7 +369,7 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
               </>
             )}
           </button>
-          <button className="btn-primary" onClick={openCreate}>
+          <button className="btn-primary w-full sm:w-auto" onClick={openCreate}>
             <Plus size={18} /> הוספת לקוח
           </button>
         </div>
@@ -398,15 +443,32 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
                   {(() => {
                     const pct = financingPercent(
                       c.requiredAmount,
-                      c.propertyValue
+                      c.propertyValue,
+                      c.existingMortgage
                     );
                     if (pct == null) return null;
+                    const br = financingBreakdown(
+                      c.requiredAmount,
+                      c.propertyValue,
+                      c.existingMortgage
+                    );
                     return (
                       <span
                         className="case-meta"
-                        title={`סכום מבוקש ${formatILS(c.requiredAmount)} מתוך שווי נכס ${formatILS(c.propertyValue)}`}
+                        title={[
+                          `מבוקש ${formatILS(c.requiredAmount)}`,
+                          c.existingMortgage != null
+                            ? `קיים ${formatILS(c.existingMortgage)}`
+                            : null,
+                          `שווי ${formatILS(c.propertyValue)}`,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       >
                         מימון {formatPercent(pct)}
+                        {br.existingPct != null && br.requestedPct != null
+                          ? ` (${formatPercent(br.requestedPct)}+${formatPercent(br.existingPct)})`
+                          : ""}
                       </span>
                     );
                   })()}
@@ -550,6 +612,22 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
                     }
                     placeholder="0"
                   />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="label">משכנתא קיימת</label>
+                  <input
+                    className="input"
+                    type="number"
+                    dir="ltr"
+                    value={form.existingMortgage}
+                    onChange={(e) =>
+                      setForm({ ...form, existingMortgage: e.target.value })
+                    }
+                    placeholder="יתרה קיימת על הנכס (אופציונלי)"
+                  />
+                  <p className="text-xs text-navy-500 mt-1">
+                    אחוז המימון = (סכום נדרש + משכנתא קיימת) ÷ שווי נכס
+                  </p>
                 </div>
                 <div className="sm:col-span-2">
                   <label className="label">כתובת הנכס</label>

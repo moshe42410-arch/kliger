@@ -46,6 +46,8 @@ import {
   sumIncomes,
   sumLiabilities,
 } from "@/lib/affordability";
+import { normalizeDriveFolderUrl } from "@/lib/drive-folder";
+import { ClientDocumentsPanel } from "@/components/ClientDocumentsPanel";
 
 type CalcTrancheRow = {
   id: string;
@@ -80,18 +82,26 @@ function formatILS(n: number | null | undefined): string {
 
 function financingPercent(
   requiredAmount: number | null | undefined,
-  propertyValue: number | null | undefined
+  propertyValue: number | null | undefined,
+  existingMortgage?: number | null | undefined
 ): number | null {
   if (
-    requiredAmount == null ||
     propertyValue == null ||
-    !Number.isFinite(requiredAmount) ||
     !Number.isFinite(propertyValue) ||
     propertyValue <= 0
   ) {
     return null;
   }
-  return (requiredAmount / propertyValue) * 100;
+  const requested =
+    requiredAmount != null && Number.isFinite(requiredAmount)
+      ? Math.max(0, requiredAmount)
+      : 0;
+  const existing =
+    existingMortgage != null && Number.isFinite(existingMortgage)
+      ? Math.max(0, existingMortgage)
+      : 0;
+  if (requested <= 0 && existing <= 0) return null;
+  return ((requested + existing) / propertyValue) * 100;
 }
 
 function formatPercent(n: number): string {
@@ -134,6 +144,7 @@ export function ClientCaseView({ initialClient }: Props) {
     bank: initialClient.bank || "",
     requiredAmount: initialClient.requiredAmount?.toString() || "",
     propertyValue: initialClient.propertyValue?.toString() || "",
+    existingMortgage: initialClient.existingMortgage?.toString() || "",
     propertyAddress: initialClient.propertyAddress || "",
     driveFolderUrl: initialClient.driveFolderUrl || "",
     spouseName: initialClient.spouseName || "",
@@ -159,6 +170,8 @@ export function ClientCaseView({ initialClient }: Props) {
   const [calcTranches, setCalcTranches] = useState<CalcTrancheRow[]>([
     newTrancheRow(),
   ]);
+  const [calcCaseAmount, setCalcCaseAmount] = useState("");
+  const [applyingCalc, setApplyingCalc] = useState(false);
 
   useEffect(() => {
     setClient(initialClient);
@@ -176,20 +189,43 @@ export function ClientCaseView({ initialClient }: Props) {
   }, [client.incomeSnapshot, editingIncome]);
 
   const calcBlend = useMemo(() => {
+    const incomplete = calcTranches.some(
+      (t) =>
+        t.years.trim() === "" ||
+        t.rate.trim() === "" ||
+        !Number.isFinite(Number(t.percent)) ||
+        !Number.isFinite(Number(t.years)) ||
+        Number(t.years) <= 0 ||
+        !Number.isFinite(Number(t.rate))
+    );
+    if (incomplete) return null;
     const parsed = calcTranches.map((t) => ({
       percent: Number(t.percent),
       years: Number(t.years),
       annualRatePercent: Number(t.rate),
     }));
-    if (parsed.some((t) => !Number.isFinite(t.percent) || !Number.isFinite(t.years) || !Number.isFinite(t.annualRatePercent))) {
-      return null;
-    }
     return blendedPaymentPer100k(parsed);
   }, [calcTranches]);
 
   const calcPreviewPer100k =
     calcBlend != null ? Math.round(calcBlend.total * 100) / 100 : null;
-  const calcPercentSum = calcBlend?.percentSum ?? 0;
+  // סה״כ אחוזים תמיד לפי השדות — גם כששנים/ריבית עדיין ריקים
+  const calcPercentSum = useMemo(
+    () =>
+      calcTranches.reduce((s, t) => {
+        const n = Number(t.percent);
+        return s + (Number.isFinite(n) ? n : 0);
+      }, 0),
+    [calcTranches]
+  );
+
+  const calcCaseRepayment = useMemo(() => {
+    const amt = Number(calcCaseAmount);
+    if (calcPreviewPer100k == null || !Number.isFinite(amt) || amt <= 0) {
+      return null;
+    }
+    return estimatedMonthlyRepayment(amt, calcPreviewPer100k);
+  }, [calcCaseAmount, calcPreviewPer100k]);
 
   const draftSnapshot: IncomeSnapshot = useMemo(
     () =>
@@ -244,9 +280,12 @@ export function ClientCaseView({ initialClient }: Props) {
         bank: form.bank || null,
         requiredAmount: form.requiredAmount ? Number(form.requiredAmount) : null,
         propertyValue: form.propertyValue ? Number(form.propertyValue) : null,
+        existingMortgage: form.existingMortgage
+          ? Number(form.existingMortgage)
+          : null,
         propertyAddress: form.propertyAddress.trim() || null,
-        driveFolderUrl: form.driveFolderUrl.trim() || null,
-        driveFolderId: client.driveFolderId,
+        driveFolderUrl: normalizeDriveFolderUrl(form.driveFolderUrl).url,
+        driveFolderId: normalizeDriveFolderUrl(form.driveFolderUrl).folderId,
         spouseName: form.spouseName.trim() || null,
         spouseEmail: form.spouseEmail.trim() || null,
         spousePhone: form.spousePhone.trim() || null,
@@ -352,15 +391,87 @@ export function ClientCaseView({ initialClient }: Props) {
     }
   }
 
-  function applyCalcToPer100k() {
+  async function applyCalcToPer100k() {
     if (calcPreviewPer100k == null) return;
     if (Math.abs(calcPercentSum - 100) > 0.05) return;
-    setAmountPer100k(String(Math.round(calcPreviewPer100k)));
-    setCalcOpen(false);
+    setApplyingCalc(true);
+    setError(null);
+    try {
+      const per100k = String(Math.round(calcPreviewPer100k));
+      setAmountPer100k(per100k);
+
+      const caseAmtRaw = calcCaseAmount.trim();
+      const caseAmt = caseAmtRaw ? Number(caseAmtRaw) : null;
+      const caseChanged =
+        (caseAmt == null && client.requiredAmount != null) ||
+        (caseAmt != null &&
+          Number.isFinite(caseAmt) &&
+          caseAmt !== client.requiredAmount);
+
+      if (caseChanged && (caseAmt == null || Number.isFinite(caseAmt))) {
+        const res = await fetch(`/api/clients/${client.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: client.name,
+            emails: client.emails,
+            phones: client.phones,
+            reminderChannel: client.reminderChannel,
+            caseType: client.caseType,
+            bank: client.bank,
+            requiredAmount: caseAmt,
+            propertyValue: client.propertyValue,
+            existingMortgage: client.existingMortgage,
+            propertyAddress: client.propertyAddress,
+            driveFolderUrl: client.driveFolderUrl,
+            driveFolderId: client.driveFolderId,
+            spouseName: client.spouseName,
+            spouseEmail: client.spouseEmail,
+            spousePhone: client.spousePhone,
+          }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j.error || "שמירת סכום התיק נכשלה");
+        }
+        const saved: Client = await res.json();
+        setClient(saved);
+        setForm((f) => ({
+          ...f,
+          requiredAmount: saved.requiredAmount?.toString() || "",
+        }));
+      }
+
+      // שמירת סכום לכל 100k
+      const snapRes = await fetch(`/api/clients/${client.id}/income-snapshot`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          incomes: client.incomeSnapshot?.incomes || incomes,
+          liabilities: client.incomeSnapshot?.liabilities || liabilities,
+          amountPer100k: Number(per100k),
+        }),
+      });
+      if (!snapRes.ok) {
+        const j = await snapRes.json().catch(() => ({}));
+        throw new Error(j.error || "שמירת סכום לכל 100k נכשלה");
+      }
+      const snapSaved: Client = await snapRes.json();
+      setClient(snapSaved);
+      setCalcOpen(false);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setApplyingCalc(false);
+    }
   }
 
   function openCalcModal() {
     setCalcTranches([newTrancheRow()]);
+    setCalcCaseAmount(
+      client.requiredAmount != null ? String(client.requiredAmount) : ""
+    );
     setCalcOpen(true);
   }
 
@@ -393,7 +504,7 @@ export function ClientCaseView({ initialClient }: Props) {
             <p className="text-sm font-medium tracking-wide text-navy-600">
               תיק לקוח
             </p>
-            <h1 className="text-3xl md:text-4xl font-heading font-bold text-navy-950 leading-tight">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-heading font-bold text-navy-950 leading-tight break-words">
               {client.name}
             </h1>
             <div className="flex flex-wrap items-center gap-2">
@@ -410,12 +521,26 @@ export function ClientCaseView({ initialClient }: Props) {
               {(() => {
                 const pct = financingPercent(
                   client.requiredAmount,
-                  client.propertyValue
+                  client.propertyValue,
+                  client.existingMortgage
                 );
                 if (pct == null) return null;
+                const req =
+                  client.requiredAmount != null && client.propertyValue
+                    ? (client.requiredAmount / client.propertyValue) * 100
+                    : null;
+                const ex =
+                  client.existingMortgage != null &&
+                  client.existingMortgage > 0 &&
+                  client.propertyValue
+                    ? (client.existingMortgage / client.propertyValue) * 100
+                    : null;
                 return (
                   <span className="case-meta">
                     אחוז מימון {formatPercent(pct)}
+                    {ex != null && req != null
+                      ? ` (מבוקש ${formatPercent(req)} + קיים ${formatPercent(ex)})`
+                      : ""}
                   </span>
                 );
               })()}
@@ -429,12 +554,17 @@ export function ClientCaseView({ initialClient }: Props) {
           </div>
           <div className="shrink-0 text-right lg:min-w-[220px]">
             <p className="text-sm text-navy-600 mb-1">סכום מבוקש</p>
-            <p className="text-4xl md:text-5xl font-heading font-bold text-navy-950 tabular-nums tracking-tight">
+            <p className="text-3xl sm:text-4xl md:text-5xl font-heading font-bold text-navy-950 tabular-nums tracking-tight">
               {formatILS(client.requiredAmount)}
             </p>
             {client.propertyValue != null && (
               <p className="text-sm text-navy-600 mt-2">
                 שווי נכס · {formatILS(client.propertyValue)}
+              </p>
+            )}
+            {client.existingMortgage != null && client.existingMortgage > 0 && (
+              <p className="text-sm text-navy-600 mt-1">
+                משכנתא קיימת · {formatILS(client.existingMortgage)}
               </p>
             )}
           </div>
@@ -530,6 +660,22 @@ export function ClientCaseView({ initialClient }: Props) {
                   setForm({ ...form, propertyValue: e.target.value })
                 }
               />
+            </div>
+            <div className="md:col-span-2">
+              <label className="label">משכנתא קיימת</label>
+              <input
+                className="input"
+                type="number"
+                dir="ltr"
+                value={form.existingMortgage}
+                onChange={(e) =>
+                  setForm({ ...form, existingMortgage: e.target.value })
+                }
+                placeholder="יתרה קיימת על הנכס (אופציונלי)"
+              />
+              <p className="text-xs text-navy-500 mt-1">
+                אחוז המימון = (סכום נדרש + משכנתא קיימת) ÷ שווי נכס
+              </p>
             </div>
             <div className="md:col-span-2">
               <label className="label">כתובת הנכס</label>
@@ -671,14 +817,44 @@ export function ClientCaseView({ initialClient }: Props) {
               מסמכי לקוח
             </h2>
             <p className="text-sm text-navy-600 mt-1">
-              סנכרון אוטומטי עם Google Drive יגיע בהמשך. בינתיים ניתן לשמור קישור
-              לתיקייה.
+              העלאה מהמחשב/טלפון ושליחה במייל מתוך המערכת. קישור לדרייב נשמר
+              בנפרד לגישה מהירה לתיקייה.
             </p>
           </div>
         </div>
-        <div>
+
+        <ClientDocumentsPanel
+          clientId={client.id}
+          clientName={client.name}
+          clientEmails={client.emails}
+          hasDriveFolder={Boolean(
+            client.driveFolderUrl || client.driveFolderId
+          )}
+        />
+
+        <div className="mt-8 pt-6 border-t border-navy-100">
+          <h3 className="font-heading font-bold text-navy-900 mb-2">
+            תיקיית Google Drive
+          </h3>
+          {!client.driveFolderUrl ? (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              לא חוברה תיקייה. הדביקו קישור לתיקיית הלקוח בדרייב ושמרו — ואז
+              הקבצים יסונכרנו אוטומטית לכאן (בפתיחת התיק ובכל שעה ברקע).
+            </div>
+          ) : (
+            <div className="mb-4 rounded-xl border border-navy-100 bg-navy-50 px-4 py-3 text-sm text-navy-800">
+              תיקייה מחוברת
+              {client.driveFolderId ? (
+                <span className="text-navy-500" dir="ltr">
+                  {" "}
+                  · id: {client.driveFolderId}
+                </span>
+              ) : null}
+            </div>
+          )}
+
           <label className="label">קישור לתיקיית דרייב</label>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <input
               className="input flex-1"
               dir="ltr"
@@ -692,7 +868,11 @@ export function ClientCaseView({ initialClient }: Props) {
               className="btn-secondary shrink-0"
               onClick={async () => {
                 setSaving(true);
+                setError(null);
                 try {
+                  const { url, folderId } = normalizeDriveFolderUrl(
+                    form.driveFolderUrl
+                  );
                   const res = await fetch(`/api/clients/${client.id}`, {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
@@ -705,9 +885,10 @@ export function ClientCaseView({ initialClient }: Props) {
                       bank: client.bank,
                       requiredAmount: client.requiredAmount,
                       propertyValue: client.propertyValue,
+                      existingMortgage: client.existingMortgage,
                       propertyAddress: client.propertyAddress,
-                      driveFolderUrl: form.driveFolderUrl.trim() || null,
-                      driveFolderId: client.driveFolderId,
+                      driveFolderUrl: url,
+                      driveFolderId: folderId,
                       spouseName: client.spouseName,
                       spouseEmail: client.spouseEmail,
                       spousePhone: client.spousePhone,
@@ -716,6 +897,10 @@ export function ClientCaseView({ initialClient }: Props) {
                   if (!res.ok) throw new Error("שמירה נכשלה");
                   const saved: Client = await res.json();
                   setClient(saved);
+                  setForm((f) => ({
+                    ...f,
+                    driveFolderUrl: saved.driveFolderUrl || "",
+                  }));
                 } catch (e) {
                   setError(e instanceof Error ? e.message : String(e));
                 } finally {
@@ -731,10 +916,10 @@ export function ClientCaseView({ initialClient }: Props) {
               href={client.driveFolderUrl}
               target="_blank"
               rel="noreferrer"
-              className="text-sm text-teal-700 underline mt-2 inline-block"
+              className="text-sm text-navy-800 underline mt-2 inline-block"
               dir="ltr"
             >
-              פתח בתיקייה
+              פתח תיקייה בדרייב
             </a>
           )}
         </div>
@@ -959,7 +1144,7 @@ export function ClientCaseView({ initialClient }: Props) {
                   </button>
                 )}
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto table-scroll">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-right text-navy-600 border-b border-navy-100">
@@ -1116,7 +1301,7 @@ export function ClientCaseView({ initialClient }: Props) {
                   </button>
                 )}
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto table-scroll">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-right text-navy-600 border-b border-navy-100">
@@ -1270,8 +1455,37 @@ export function ClientCaseView({ initialClient }: Props) {
             </div>
             <p className="text-sm text-navy-600 mb-4">
               חלק את הסכום למסלולים: לכל שורה אחוז מהסכום, שנים וריבית. ההחזר
-              הכולל לכל 100,000 הוא סכום ההחזרים המשוקללים (שפיצר).
+              הכולל לכל 100,000 הוא סכום ההחזרים המשוקללים (שפיצר). ניתן גם
+              לערוך כאן את סכום התיק.
             </p>
+
+            <div className="rounded-xl border border-navy-100 bg-white p-3 mb-4">
+              <label className="label text-xs">סכום התיק (סכום מבוקש)</label>
+              <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+                <input
+                  className="input py-2 flex-1"
+                  type="number"
+                  dir="ltr"
+                  min={0}
+                  step={1000}
+                  placeholder="לדוגמה: 1200000"
+                  value={calcCaseAmount}
+                  onChange={(e) => setCalcCaseAmount(e.target.value)}
+                />
+                <div className="rounded-xl bg-navy-50 border border-navy-100 px-3 py-2 min-w-[160px]">
+                  <p className="text-[11px] text-navy-600 mb-0.5">
+                    החזר משוער לתיק
+                  </p>
+                  <p className="text-base font-heading font-bold text-navy-950 tabular-nums">
+                    {formatILS(
+                      calcCaseRepayment != null
+                        ? Math.round(calcCaseRepayment)
+                        : null
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
 
             <div className="space-y-3 mb-4">
               {calcTranches.map((row, idx) => {
@@ -1299,7 +1513,7 @@ export function ClientCaseView({ initialClient }: Props) {
                         </button>
                       )}
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <div>
                         <label className="label text-xs">אחוז מהסכום</label>
                         <input
@@ -1442,12 +1656,13 @@ export function ClientCaseView({ initialClient }: Props) {
                 type="button"
                 className="btn-primary"
                 disabled={
+                  applyingCalc ||
                   calcPreviewPer100k == null ||
                   Math.abs(calcPercentSum - 100) > 0.05
                 }
-                onClick={applyCalcToPer100k}
+                onClick={() => void applyCalcToPer100k()}
               >
-                השתמש בסכום זה
+                {applyingCalc ? "שומר..." : "השתמש בסכום זה"}
               </button>
             </div>
           </div>

@@ -473,7 +473,7 @@ export function RemindersTab({
       </div>
 
       <div
-        className="flex flex-wrap gap-2 mb-6"
+        className="tabs-scroll"
         role="tablist"
         aria-label="סינון תזכורות לפי סטטוס"
       >
