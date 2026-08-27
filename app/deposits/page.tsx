@@ -14,15 +14,12 @@ import {
 import { getCurrentUser } from "@/lib/auth";
 import { ensureRemindersForDeposit } from "@/lib/reminders";
 import { DepositsTab } from "@/components/DepositsTab";
-import { type DepositType } from "@/lib/types";
-import { monthBucketOf } from "@/lib/db";
-import { isDepositDocComplete } from "@/lib/deposit-doc-buckets";
+import {
+  nearbyMonthBuckets,
+  pickOpenDocReminder,
+} from "@/lib/deposit-doc-reminders";
 
 export const dynamic = "force-dynamic";
-
-function isDocComplete(rem: Reminder, depositType: DepositType): boolean {
-  return isDepositDocComplete(depositType, rem);
-}
 
 export default async function DepositsPage() {
   const user = await getCurrentUser();
@@ -59,16 +56,20 @@ export default async function DepositsPage() {
     }
   }
 
-  // תזכורות לתיעוד: שחלון הפתיחה הגיע, או ששייכות לחודש הנוכחי
-  // (כדי לאפשר סימון בוצע/שולם גם לפני מועד התזכורת)
-  const currentBucket = monthBucketOf(new Date());
+  // תזכורות לתיעוד: חודש קודם / נוכחי / הבא + כל תזכורת שכבר סומנה
+  const { prev, current, next } = nearbyMonthBuckets(new Date());
   const dueRemRows = await sql`
     SELECT * FROM reminders
     WHERE owner_id = ${ownerId}
       AND phase = 'primary'
       AND (
         scheduled_for <= ${nowIso}
-        OR month_bucket = ${currentBucket}
+        OR month_bucket = ${prev}
+        OR month_bucket = ${current}
+        OR month_bucket = ${next}
+        OR action_done_at IS NOT NULL
+        OR payment_done_at IS NOT NULL
+        OR paid_at IS NOT NULL
       )
     ORDER BY target_date DESC
   `;
@@ -85,23 +86,17 @@ export default async function DepositsPage() {
   }
 
   const depositById = Object.fromEntries(deposits.map((d) => [d.id, d]));
-
-  // תזכורת פעילה לתיעוד: קודם לא-הושלמה, אחרת האחרונה לחודש (לארכיון)
-  const monthByDeposit: Record<string, Reminder> = {};
+  const byDeposit: Record<string, Reminder[]> = {};
   for (const row of dueRemRows as ReminderRow[]) {
     const r = parseReminder(row);
-    const dep = depositById[r.depositId];
-    if (!dep) continue;
-    const existing = monthByDeposit[r.depositId];
-    if (!existing) {
-      monthByDeposit[r.depositId] = r;
-      continue;
-    }
-    const existingDone = isDocComplete(existing, dep.depositType);
-    const incomingDone = isDocComplete(r, dep.depositType);
-    if (existingDone && !incomingDone) {
-      monthByDeposit[r.depositId] = r;
-    }
+    if (!depositById[r.depositId]) continue;
+    (byDeposit[r.depositId] ||= []).push(r);
+  }
+
+  const monthByDeposit: Record<string, Reminder> = {};
+  for (const d of deposits) {
+    const picked = pickOpenDocReminder(byDeposit[d.id] || [], d);
+    if (picked) monthByDeposit[d.id] = picked;
   }
 
   return (

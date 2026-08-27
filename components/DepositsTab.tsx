@@ -37,6 +37,7 @@ import {
   depositRequiresPayment,
 } from "@/lib/types";
 import { depositDocBucket } from "@/lib/deposit-doc-buckets";
+import { mergeOpenDocMaps } from "@/lib/deposit-doc-reminders";
 
 interface FormState {
   id?: string;
@@ -147,7 +148,7 @@ export function DepositsTab({
   }, [toast]);
 
   useEffect(() => {
-    setDocs(openReminders);
+    setDocs((prev) => mergeOpenDocMaps(prev, openReminders));
   }, [openReminders]);
 
   useEffect(() => {
@@ -320,17 +321,19 @@ export function DepositsTab({
   }
 
   async function markDocAction(depositId: string, reminderId?: string) {
-    let rid = reminderId;
-    if (!rid) {
-      const rem = await ensureDocReminder(depositId);
-      if (!rem) return;
-      rid = rem.id;
+    let rem: Reminder | null | undefined =
+      (reminderId && docs[depositId]?.id === reminderId
+        ? docs[depositId]
+        : null) || docs[depositId];
+    if (!rem) {
+      rem = await ensureDocReminder(depositId);
     }
+    if (!rem) return;
+    const rid = rem.id;
     const now = new Date().toISOString();
     const dep = deposits.find((d) => d.id === depositId);
-    const cur = docs[depositId];
-    if (cur && dep) {
-      const next = { ...cur, actionDoneAt: now };
+    const next = { ...rem, actionDoneAt: now };
+    if (dep) {
       setDocs((prev) => ({ ...prev, [depositId]: next }));
       setDocTab(docBucket(dep, next));
     }
@@ -353,17 +356,19 @@ export function DepositsTab({
   }
 
   async function markDocPaid(depositId: string, reminderId?: string) {
-    let rid = reminderId;
-    if (!rid) {
-      const rem = await ensureDocReminder(depositId);
-      if (!rem) return;
-      rid = rem.id;
+    let rem: Reminder | null | undefined =
+      (reminderId && docs[depositId]?.id === reminderId
+        ? docs[depositId]
+        : null) || docs[depositId];
+    if (!rem) {
+      rem = await ensureDocReminder(depositId);
     }
+    if (!rem) return;
+    const rid = rem.id;
     const now = new Date().toISOString();
     const dep = deposits.find((d) => d.id === depositId);
-    const cur = docs[depositId];
-    if (cur && dep) {
-      const next = { ...cur, paymentDoneAt: now, paidAt: now };
+    const next = { ...rem, paymentDoneAt: now, paidAt: now };
+    if (dep) {
       setDocs((prev) => ({ ...prev, [depositId]: next }));
       setDocTab(docBucket(dep, next));
     }

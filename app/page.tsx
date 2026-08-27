@@ -8,14 +8,14 @@ import {
   type DepositRow,
   type ReminderRow,
   type Reminder,
-  type Deposit,
 } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { ensureRemindersForDeposit } from "@/lib/reminders";
+import { depositDocBucket } from "@/lib/deposit-doc-buckets";
 import {
-  depositDocBucket,
-  isDepositDocComplete,
-} from "@/lib/deposit-doc-buckets";
+  nearbyMonthBuckets,
+  pickOpenDocReminder,
+} from "@/lib/deposit-doc-reminders";
 import {
   Users,
   Banknote,
@@ -90,33 +90,34 @@ export default async function Home() {
     }
   }
 
+  const { prev, current, next } = nearbyMonthBuckets(new Date());
   const dueRemRows = await sql`
     SELECT * FROM reminders
     WHERE owner_id = ${ownerId}
       AND phase = 'primary'
       AND (
         scheduled_for <= ${nowIso}
-        OR month_bucket = ${currentBucket}
+        OR month_bucket = ${prev}
+        OR month_bucket = ${current}
+        OR month_bucket = ${next}
+        OR action_done_at IS NOT NULL
+        OR payment_done_at IS NOT NULL
+        OR paid_at IS NOT NULL
       )
     ORDER BY target_date DESC
   `;
 
   const depositById = Object.fromEntries(deposits.map((d) => [d.id, d]));
-  const monthByDeposit: Record<string, Reminder> = {};
+  const byDeposit: Record<string, Reminder[]> = {};
   for (const row of dueRemRows as ReminderRow[]) {
     const r = parseReminder(row);
-    const dep = depositById[r.depositId];
-    if (!dep) continue;
-    const existing = monthByDeposit[r.depositId];
-    if (!existing) {
-      monthByDeposit[r.depositId] = r;
-      continue;
-    }
-    const existingDone = isDepositDocComplete(dep.depositType, existing);
-    const incomingDone = isDepositDocComplete(dep.depositType, r);
-    if (existingDone && !incomingDone) {
-      monthByDeposit[r.depositId] = r;
-    }
+    if (!depositById[r.depositId]) continue;
+    (byDeposit[r.depositId] ||= []).push(r);
+  }
+  const monthByDeposit: Record<string, Reminder> = {};
+  for (const d of deposits) {
+    const picked = pickOpenDocReminder(byDeposit[d.id] || [], d);
+    if (picked) monthByDeposit[d.id] = picked;
   }
 
   const tabCounts = { pending: 0, done: 0, paid: 0, archive: 0 };
@@ -302,9 +303,7 @@ export default async function Home() {
             {firstName ? `, ${firstName}` : ""} · {formatDateHe(now)}
           </div>
           <h1 className="section-title mb-3">לוח בקרה הפקדות</h1>
-          <p className="section-subtitle">
-            סקירה לפי תיעוד ביצוע ותשלום — אותם מספרים כמו בלשונית הפקדות
-          </p>
+          <p className="section-subtitle">סקירה לפי תיעוד ביצוע ותשלום</p>
         </div>
 
         <div className="flex gap-3 flex-wrap">

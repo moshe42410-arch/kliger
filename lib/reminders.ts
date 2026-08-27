@@ -30,6 +30,7 @@ import { sendEmail } from "./email";
 import { getBlobBytes } from "./blob-storage";
 import { depositTypeLabel, depositRequiresPayment, scholarshipDeliveryLabel } from "./types";
 import { deriveReminderStatusFromDocs } from "./reminder-inbox";
+import { documentationOccurrenceDate } from "./deposit-doc-reminders";
 import { isShabbatOrHoliday, isErevChag } from "./shabbat";
 import {
   mergeTemplates,
@@ -752,13 +753,19 @@ export async function getOrCreateCurrentMonthDocReminder(
   deposit: Deposit
 ): Promise<Reminder | null> {
   const sql = getSql();
-  const bucket = monthBucketOf(new Date());
+  const occ = documentationOccurrenceDate(deposit);
+  if (!occ) return null;
+  const bucket = monthBucketOf(occ);
+  const targetDateIso = toIsoDate(occ);
 
   const existing = (await sql`
     SELECT * FROM reminders
     WHERE deposit_id = ${deposit.id}
       AND phase = 'primary'
-      AND month_bucket = ${bucket}
+      AND (
+        month_bucket = ${bucket}
+        OR target_date = ${targetDateIso}
+      )
     ORDER BY target_date DESC
     LIMIT 1
   `) as ReminderRow[];
@@ -770,19 +777,51 @@ export async function getOrCreateCurrentMonthDocReminder(
     SELECT * FROM reminders
     WHERE deposit_id = ${deposit.id}
       AND phase = 'primary'
-      AND month_bucket = ${bucket}
+      AND (
+        month_bucket = ${bucket}
+        OR target_date = ${targetDateIso}
+      )
     ORDER BY target_date DESC
     LIMIT 1
   `) as ReminderRow[];
   if (after[0]) return parseReminder(after[0]);
 
-  const any = (await sql`
-    SELECT * FROM reminders
-    WHERE deposit_id = ${deposit.id} AND phase = 'primary'
-    ORDER BY target_date DESC
-    LIMIT 1
-  `) as ReminderRow[];
-  return any[0] ? parseReminder(any[0]) : null;
+  // force-create the documentation occurrence even if its reminder window
+  // hasn't opened yet / day-of-month already passed this calendar month
+  const id = uuid();
+  const token = uuid().replace(/-/g, "");
+  const uploadUrl = buildUploadUrl(token);
+  const cRows = await sql`SELECT * FROM clients WHERE id = ${deposit.clientId}`;
+  const cRow = cRows[0] as ClientRow | undefined;
+  if (!cRow) return null;
+  const client = parseClient(cRow);
+  let association: Association | null = null;
+  if (deposit.associationId) {
+    const aRows = await sql`
+      SELECT * FROM associations WHERE id = ${deposit.associationId}
+    `;
+    const aRow = aRows[0] as AssociationRow | undefined;
+    if (aRow) association = parseAssociation(aRow);
+  }
+  const ownerUser = await getUserById(deposit.ownerId);
+  const advisor = ownerUser ? userAsAdvisor(ownerUser) : null;
+  const scheduled = addDays(occ, -deposit.daysBeforeReminder);
+  const { subject, body } = await buildReminderContent(
+    client,
+    deposit,
+    targetDateIso,
+    uploadUrl,
+    association,
+    "primary",
+    "client",
+    advisor?.name
+  );
+  await sql`
+    INSERT INTO reminders (id, owner_id, deposit_id, client_id, status, phase, target_date, scheduled_for, subject, body, upload_token, month_bucket)
+    VALUES (${id}, ${deposit.ownerId}, ${deposit.id}, ${deposit.clientId}, 'waiting_advisor', ${"primary"}, ${targetDateIso}, ${scheduled.toISOString()}, ${subject}, ${body}, ${token}, ${bucket})
+  `;
+  const rows = await sql`SELECT * FROM reminders WHERE id = ${id}`;
+  return rows[0] ? parseReminder(rows[0] as ReminderRow) : null;
 }
 
 async function syncReminderStatusFromDocs(
