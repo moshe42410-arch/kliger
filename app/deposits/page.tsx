@@ -14,16 +14,14 @@ import {
 import { getCurrentUser } from "@/lib/auth";
 import { ensureRemindersForDeposit } from "@/lib/reminders";
 import { DepositsTab } from "@/components/DepositsTab";
-import { depositRequiresPayment, type DepositType } from "@/lib/types";
+import { type DepositType } from "@/lib/types";
 import { monthBucketOf } from "@/lib/db";
+import { isDepositDocComplete } from "@/lib/deposit-doc-buckets";
 
 export const dynamic = "force-dynamic";
 
 function isDocComplete(rem: Reminder, depositType: DepositType): boolean {
-  const action = !!rem.actionDoneAt;
-  const paid = !!(rem.paymentDoneAt || rem.paidAt);
-  if (!depositRequiresPayment(depositType)) return action;
-  return action && paid;
+  return isDepositDocComplete(depositType, rem);
 }
 
 export default async function DepositsPage() {

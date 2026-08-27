@@ -5,6 +5,7 @@ import { getBlobBytes } from "@/lib/blob-storage";
 import { sendEmail, type EmailAttachment } from "@/lib/email";
 import {
   buildAttachedFileList,
+  getDocumentsSendOptions,
   mergeTemplates,
   renderTemplate,
 } from "@/lib/email-templates";
@@ -42,6 +43,7 @@ export async function POST(
       subject?: string;
       message?: string;
       recipientName?: string;
+      includeLogo?: boolean;
     };
 
     const documentIds = Array.isArray(body.documentIds)
@@ -175,18 +177,45 @@ export async function POST(
     const filenames = attachments.map((a) => a.filename);
     const recipientName =
       (body.recipientName || "").trim() || client.name || "לקוח יקר";
+    const nationalId = (client.nationalId || "").trim();
     const templates = mergeTemplates(user.emailTemplates);
     const rendered = renderTemplate(templates.documents_send, {
       recipientName,
       clientName: client.name,
+      nationalId,
       fileList: buildAttachedFileList(filenames),
       fileNames: filenames.join(", "),
       fileCount: String(filenames.length),
       companyName: user.companyName || user.name || "KLIGER",
       advisorName: user.name || "",
     });
-    const subject = (body.subject || "").trim() || rendered.subject;
-    const bodyText = (body.message || "").trim() || rendered.body;
+
+    function withNationalId(text: string): string {
+      if (!nationalId) {
+        return text
+          .replace(/\s*·\s*מ\.ז\s*$/g, "")
+          .replace(/\n?מ\.ז\s*:?\s*$/gm, "")
+          .replace(/מ\.ז\s*(?=\n|$)/g, "")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+      }
+      if (text.includes(nationalId)) return text;
+      if (/מ\.ז(?!\s*\d)/.test(text)) {
+        return text.replace(/מ\.ז(?!\s*\d)/g, `מ.ז ${nationalId}`);
+      }
+      return `${text} · מ.ז ${nationalId}`.trim();
+    }
+
+    const subject = withNationalId(
+      (body.subject || "").trim() || rendered.subject
+    );
+    const bodyText = withNationalId(
+      (body.message || "").trim() || rendered.body
+    );
+    const includeLogo =
+      typeof body.includeLogo === "boolean"
+        ? body.includeLogo
+        : getDocumentsSendOptions(user.emailTemplates).includeLogo;
 
     const result = await sendEmail({
       to,
@@ -195,6 +224,7 @@ export async function POST(
       clientId: client.id,
       attachments,
       fromUserId: user.id,
+      includeLogo,
     });
 
     if (!result.ok) {

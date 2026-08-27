@@ -125,6 +125,116 @@ async function listChildren(
   return out;
 }
 
+export type DriveFolderItem = {
+  id: string;
+  name: string;
+  webViewLink: string | null;
+};
+
+/** List only subfolders under a parent (My Drive root = "root"). */
+export async function listDriveFolders(
+  accessToken: string,
+  parentId: string = "root"
+): Promise<DriveFolderItem[]> {
+  const out: DriveFolderItem[] = [];
+  let pageToken: string | undefined;
+  const parent = parentId.replace(/'/g, "\\'");
+  do {
+    const q = `'${parent}' in parents and mimeType = '${FOLDER_MIME}' and trashed = false`;
+    const params = new URLSearchParams({
+      q,
+      pageSize: "100",
+      orderBy: "name",
+      fields: "nextPageToken, files(id,name,webViewLink)",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+    const res = await fetch(`${DRIVE_FILES}?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      if (
+        text.includes("accessNotConfigured") ||
+        text.includes("has not been used in project") ||
+        text.includes("it is disabled")
+      ) {
+        throw new Error(
+          "Google Drive API לא מופעל בפרויקט Google Cloud. " +
+            "Console → APIs & Services → Library → חפשו Google Drive API → Enable."
+        );
+      }
+      if (text.includes("insufficientPermissions") || res.status === 403) {
+        throw new Error(
+          "חסרה הרשאת Drive. בהגדרות → נתקו Google וחברו מחדש."
+        );
+      }
+      throw new Error(`Drive folders failed: ${text.slice(0, 240)}`);
+    }
+    const json = JSON.parse(text) as {
+      nextPageToken?: string;
+      files?: Array<{ id: string; name: string; webViewLink?: string }>;
+    };
+    for (const f of json.files || []) {
+      out.push({
+        id: f.id,
+        name: f.name,
+        webViewLink:
+          f.webViewLink ||
+          `https://drive.google.com/drive/folders/${f.id}`,
+      });
+    }
+    pageToken = json.nextPageToken;
+  } while (pageToken);
+  return out;
+}
+
+/** Search folders by name across Drive (shared + mine). */
+export async function searchDriveFolders(
+  accessToken: string,
+  query: string
+): Promise<DriveFolderItem[]> {
+  const qSafe = query.trim().replace(/'/g, "\\'");
+  if (!qSafe) return listDriveFolders(accessToken, "root");
+  const out: DriveFolderItem[] = [];
+  let pageToken: string | undefined;
+  do {
+    const q = `mimeType = '${FOLDER_MIME}' and trashed = false and name contains '${qSafe}'`;
+    const params = new URLSearchParams({
+      q,
+      pageSize: "40",
+      fields: "nextPageToken, files(id,name,webViewLink)",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+      corpora: "allDrives",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+    const res = await fetch(`${DRIVE_FILES}?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`Drive search failed: ${text.slice(0, 240)}`);
+    }
+    const json = JSON.parse(text) as {
+      nextPageToken?: string;
+      files?: Array<{ id: string; name: string; webViewLink?: string }>;
+    };
+    for (const f of json.files || []) {
+      out.push({
+        id: f.id,
+        name: f.name,
+        webViewLink:
+          f.webViewLink ||
+          `https://drive.google.com/drive/folders/${f.id}`,
+      });
+    }
+    pageToken = json.nextPageToken;
+  } while (pageToken);
+  return out;
+}
+
 /** Recursively list files under a folder (skips folder rows in result). */
 export async function listDriveFolderFiles(
   accessToken: string,

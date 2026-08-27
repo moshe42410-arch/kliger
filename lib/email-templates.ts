@@ -48,6 +48,7 @@ export interface TemplateVar {
 export const TEMPLATE_VARIABLES: TemplateVar[] = [
   { key: "recipientName", label: "שם הנמען", example: "רות קליין" },
   { key: "clientName", label: "שם הלקוח", example: "יוסי כהן" },
+  { key: "nationalId", label: "מ.ז לקוח", example: "012345678" },
   { key: "advisorName", label: "שם היועץ", example: "משה קליגר" },
   { key: "companyName", label: "שם החברה", example: "קליגר ייעוץ" },
   { key: "amount", label: "סכום", example: "₪12,500" },
@@ -132,6 +133,7 @@ export const TEMPLATE_META: TemplateMeta[] = [
     variableKeys: V(
       "recipientName",
       "clientName",
+      "nationalId",
       "fileList",
       "fileNames",
       "fileCount",
@@ -287,8 +289,10 @@ export const TEMPLATE_META: TemplateMeta[] = [
 
 export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
   documents_send: {
-    subject: "מסמכים עבור {clientName}",
+    subject: "מסמכים עבור {clientName} · מ.ז {nationalId}",
     body: `לכבוד {recipientName},
+
+מ.ז {nationalId}
 
 מצורף:
 {fileList}
@@ -463,6 +467,36 @@ export function renderString(str: string, vars: TemplateVars): string {
 export function buildAttachedFileList(filenames: string[]): string {
   if (filenames.length === 0) return "";
   return filenames.map((n) => `מצורף ${n}`).join("\n");
+}
+
+export type DocumentsSendOptions = {
+  includeLogo: boolean;
+  /** אם מוגדר — משמש כברירת מחדל לשם הנמען (אחרת שם הלקוח) */
+  recipientNameDefault: string;
+};
+
+export const DEFAULT_DOCUMENTS_SEND_OPTIONS: DocumentsSendOptions = {
+  includeLogo: true,
+  recipientNameDefault: "",
+};
+
+export function getDocumentsSendOptions(
+  userTemplates: Record<string, unknown> | null | undefined
+): DocumentsSendOptions {
+  const raw = userTemplates?.documents_send_options as
+    | Partial<DocumentsSendOptions>
+    | undefined;
+  if (!raw || typeof raw !== "object") return { ...DEFAULT_DOCUMENTS_SEND_OPTIONS };
+  return {
+    includeLogo:
+      typeof raw.includeLogo === "boolean"
+        ? raw.includeLogo
+        : DEFAULT_DOCUMENTS_SEND_OPTIONS.includeLogo,
+    recipientNameDefault:
+      typeof raw.recipientNameDefault === "string"
+        ? raw.recipientNameDefault
+        : "",
+  };
 }
 
 export function variablesForTemplate(id: TemplateId): TemplateVar[] {

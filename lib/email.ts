@@ -195,6 +195,8 @@ export interface SendEmailOptions {
   fromUserId?: string | null;
   fromNameOverride?: string | null;
   fromEmailOverride?: string | null;
+  /** false = מייל פשוט בלי לוגו/מעטפת ממותגת */
+  includeLogo?: boolean;
 }
 
 export async function sendEmail(opts: SendEmailOptions): Promise<{
@@ -215,18 +217,21 @@ export async function sendEmail(opts: SendEmailOptions): Promise<{
     "KLIGER";
 
   const appUrl = (process.env.APP_URL || "").replace(/\/$/, "");
+  const wantBranded = opts.includeLogo !== false;
   const advisorLogoUrl =
-    user?.logoFilename && appUrl
+    wantBranded && user?.logoFilename && appUrl
       ? user.logoFilename.startsWith("http")
         ? user.logoFilename
         : `${appUrl}/api/users/${user.id}/logo/image?v=${encodeURIComponent(user.logoFilename)}`
       : null;
 
-  const html = htmlWrap(opts.body, {
-    advisorName: fromName,
-    advisorLogoUrl,
-    advisorSubtitle: opts.brandSubtitle ?? user?.phone ?? null,
-  });
+  const html = wantBranded
+    ? htmlWrap(opts.body, {
+        advisorName: fromName,
+        advisorLogoUrl,
+        advisorSubtitle: opts.brandSubtitle ?? user?.phone ?? null,
+      })
+    : plainHtmlWrap(opts.body);
   const text = opts.body.replace(/<[^>]+>/g, "");
 
   try {
@@ -310,6 +315,17 @@ interface WrapOptions {
   advisorName: string;
   advisorLogoUrl: string | null;
   advisorSubtitle: string | null;
+}
+
+function plainHtmlWrap(body: string): string {
+  const withBreaks = escapeHtml(body).replace(/\n/g, "<br/>");
+  return `<!doctype html>
+<html dir="rtl" lang="he">
+  <head><meta charset="utf-8"/></head>
+  <body dir="rtl" style="margin:0;padding:16px;font-family:Arial,sans-serif;color:#111;direction:rtl;text-align:right;line-height:1.7;font-size:15px;">
+    <div dir="rtl" style="direction:rtl;text-align:right;unicode-bidi:embed;">\u200F${withBreaks}</div>
+  </body>
+</html>`;
 }
 
 function htmlWrap(body: string, opts: WrapOptions): string {

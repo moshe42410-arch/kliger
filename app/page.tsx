@@ -1,7 +1,21 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getSql } from "@/lib/db";
+import {
+  getSql,
+  parseDeposit,
+  parseReminder,
+  monthBucketOf,
+  type DepositRow,
+  type ReminderRow,
+  type Reminder,
+  type Deposit,
+} from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ensureRemindersForDeposit } from "@/lib/reminders";
+import {
+  depositDocBucket,
+  isDepositDocComplete,
+} from "@/lib/deposit-doc-buckets";
 import {
   Users,
   Banknote,
@@ -45,75 +59,118 @@ export default async function Home() {
 
   const sql = getSql();
   const ownerId = user.id;
-  const monthBucket = new Date().toISOString().slice(0, 7); // YYYY-MM
   const nowIso = new Date().toISOString();
+  const currentBucket = monthBucketOf(new Date());
 
   const [
     clientsRow,
-    depositsRow,
-    waitingClientRow,
-    waitingAdvisorRow,
+    depositRows,
     waitingAssociationRow,
-    resolvedRow,
     carriedOverRow,
     snoozedRow,
-    actionPendingRow,
-    paymentPendingRow,
-    salaryDoneUnpaidRow,
-    salaryPaidUndoneRow,
-    scholarshipDoneUnpaidRow,
-    scholarshipPaidUndoneRow,
   ] = await Promise.all([
     sql`SELECT COUNT(*)::int as c FROM clients WHERE owner_id = ${ownerId}`,
-    sql`SELECT COUNT(*)::int as c FROM deposits WHERE owner_id = ${ownerId} AND active = 1`,
-    sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND r.status NOT IN ('snoozed','waiting_association') AND d.deposit_type IN ('salary_slip','kollel_scholarship') AND r.payment_done_at IS NULL AND r.paid_at IS NULL`,
-    sql`SELECT COUNT(*)::int as c FROM reminders r WHERE r.owner_id = ${ownerId} AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND r.status NOT IN ('snoozed','waiting_association','resolved') AND r.action_done_at IS NULL`,
-    sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${ownerId} AND status = 'waiting_association' AND month_bucket = ${monthBucket} AND scheduled_for <= ${nowIso}`,
-    sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${ownerId} AND status = 'resolved' AND month_bucket = ${monthBucket}`,
+    sql`SELECT * FROM deposits WHERE owner_id = ${ownerId} ORDER BY created_at DESC`,
+    sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${ownerId} AND status = 'waiting_association' AND month_bucket = ${currentBucket} AND scheduled_for <= ${nowIso}`,
     sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${ownerId} AND status = 'carried_over'`,
     sql`SELECT COUNT(*)::int as c FROM reminders WHERE owner_id = ${ownerId} AND status = 'snoozed'`,
-    sql`SELECT COUNT(*)::int as c FROM reminders r WHERE r.owner_id = ${ownerId} AND r.status != 'resolved' AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND r.action_done_at IS NULL`,
-    sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.status != 'resolved' AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND r.action_done_at IS NOT NULL AND d.deposit_type IN ('salary_slip','kollel_scholarship') AND r.payment_done_at IS NULL AND r.paid_at IS NULL`,
-    sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.status != 'resolved' AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND d.deposit_type = 'salary_slip' AND r.action_done_at IS NOT NULL AND r.payment_done_at IS NULL AND r.paid_at IS NULL`,
-    sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.status != 'resolved' AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND d.deposit_type = 'salary_slip' AND r.action_done_at IS NULL AND (r.payment_done_at IS NOT NULL OR r.paid_at IS NOT NULL)`,
-    sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.status != 'resolved' AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND d.deposit_type = 'kollel_scholarship' AND r.action_done_at IS NOT NULL AND r.payment_done_at IS NULL AND r.paid_at IS NULL`,
-    sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.status != 'resolved' AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND d.deposit_type = 'kollel_scholarship' AND r.action_done_at IS NULL AND (r.payment_done_at IS NOT NULL OR r.paid_at IS NOT NULL)`,
   ]);
 
   const getCount = (rows: unknown): number =>
     Number((rows as Array<{ c: number }>)[0]?.c ?? 0);
+
+  const deposits = (depositRows as DepositRow[]).map(parseDeposit);
+  for (const d of deposits) {
+    if (d.active) {
+      try {
+        await ensureRemindersForDeposit(d);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  const dueRemRows = await sql`
+    SELECT * FROM reminders
+    WHERE owner_id = ${ownerId}
+      AND phase = 'primary'
+      AND (
+        scheduled_for <= ${nowIso}
+        OR month_bucket = ${currentBucket}
+      )
+    ORDER BY target_date DESC
+  `;
+
+  const depositById = Object.fromEntries(deposits.map((d) => [d.id, d]));
+  const monthByDeposit: Record<string, Reminder> = {};
+  for (const row of dueRemRows as ReminderRow[]) {
+    const r = parseReminder(row);
+    const dep = depositById[r.depositId];
+    if (!dep) continue;
+    const existing = monthByDeposit[r.depositId];
+    if (!existing) {
+      monthByDeposit[r.depositId] = r;
+      continue;
+    }
+    const existingDone = isDepositDocComplete(dep.depositType, existing);
+    const incomingDone = isDepositDocComplete(dep.depositType, r);
+    if (existingDone && !incomingDone) {
+      monthByDeposit[r.depositId] = r;
+    }
+  }
+
+  const tabCounts = { pending: 0, done: 0, paid: 0, archive: 0 };
+  let activeDeposits = 0;
+  for (const d of deposits) {
+    if (d.active) activeDeposits++;
+    const bucket = depositDocBucket(d.depositType, monthByDeposit[d.id]);
+    tabCounts[bucket]++;
+  }
+
   const clientsCount = getCount(clientsRow);
-  const depositsActive = getCount(depositsRow);
-  const waitingClient = getCount(waitingClientRow);
-  const waitingAdvisor = getCount(waitingAdvisorRow);
   const waitingAssociation = getCount(waitingAssociationRow);
-  const resolvedThisMonth = getCount(resolvedRow);
   const carriedOver = getCount(carriedOverRow);
   const snoozed = getCount(snoozedRow);
-  const actionPending = getCount(actionPendingRow);
-  const paymentPending = getCount(paymentPendingRow);
-  const salaryDoneUnpaid = getCount(salaryDoneUnpaidRow);
-  const salaryPaidUndone = getCount(salaryPaidUndoneRow);
-  const scholarshipDoneUnpaid = getCount(scholarshipDoneUnpaidRow);
-  const scholarshipPaidUndone = getCount(scholarshipPaidUndoneRow);
+
+  const neitherCount = tabCounts.pending;
+  const doneUnpaidCount = tabCounts.done;
+  const paidUndoneCount = tabCounts.paid;
+  const fullyDoneCount = tabCounts.archive;
+
+  // פירוט לפי סוג (מתוך אותן הפקדות)
+  let salaryDoneUnpaid = 0;
+  let salaryPaidUndone = 0;
+  let scholarshipDoneUnpaid = 0;
+  let scholarshipPaidUndone = 0;
+  for (const d of deposits) {
+    const b = depositDocBucket(d.depositType, monthByDeposit[d.id]);
+    if (d.depositType === "salary_slip") {
+      if (b === "done") salaryDoneUnpaid++;
+      if (b === "paid") salaryPaidUndone++;
+    }
+    if (d.depositType === "kollel_scholarship") {
+      if (b === "done") scholarshipDoneUnpaid++;
+      if (b === "paid") scholarshipPaidUndone++;
+    }
+  }
 
   const allCards: Record<string, KpiCard> = {
     waiting_client: {
       id: "waiting_client",
       label: "ממתין ללקוח",
-      value: waitingClient,
+      value: doneUnpaidCount,
       icon: Clock,
       color: "amber",
-      href: "/reminders?status=waiting_client",
-      hint: "טרם שולם (גם אם בוצע)",
+      href: "/deposits?tab=done",
+      hint: "בוצע — ממתין לתשלום",
     },
     waiting_advisor: {
       id: "waiting_advisor",
       label: "ממתין לטיפול יועץ",
-      value: waitingAdvisor,
+      value: neitherCount + paidUndoneCount,
       icon: BellRing,
       color: "purple",
-      href: "/reminders?status=waiting_advisor",
+      href: "/deposits?tab=pending",
       hint: "טרם בוצעה הפעולה",
     },
     waiting_association: {
@@ -128,7 +185,7 @@ export default async function Home() {
     action_pending: {
       id: "action_pending",
       label: "ממתין לביצוע פעולה",
-      value: actionPending,
+      value: neitherCount + paidUndoneCount,
       icon: AlertCircle,
       color: "amber",
       href: "/deposits?tab=pending",
@@ -137,7 +194,7 @@ export default async function Home() {
     payment_pending: {
       id: "payment_pending",
       label: "בוצע ולא שולם",
-      value: paymentPending,
+      value: doneUnpaidCount,
       icon: Banknote,
       color: "rose",
       href: "/deposits?tab=done",
@@ -195,12 +252,12 @@ export default async function Home() {
     },
     resolved: {
       id: "resolved",
-      label: "טופל החודש",
-      value: resolvedThisMonth,
+      label: "טופלו (ארכיון)",
+      value: fullyDoneCount,
       icon: CheckCircle2,
       color: "green",
-      href: "/reminders?status=resolved",
-      hint: "הסתיים בהצלחה",
+      href: "/deposits?tab=archive",
+      hint: "בוצע וגם שולם (לפי תיעוד)",
     },
     clients: {
       id: "clients",
@@ -213,43 +270,15 @@ export default async function Home() {
     deposits: {
       id: "deposits",
       label: "הפקדות פעילות",
-      value: depositsActive,
+      value: activeDeposits,
       icon: Banknote,
       color: "green",
       href: "/deposits",
     },
   };
 
-  const [neitherRow, doneUnpaidRow, paidUndoneRow, fullyDoneRow] =
-    await Promise.all([
-      sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND r.status != 'resolved' AND r.action_done_at IS NULL AND r.payment_done_at IS NULL AND r.paid_at IS NULL`,
-      sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND r.status != 'resolved' AND r.action_done_at IS NOT NULL AND d.deposit_type IN ('salary_slip','kollel_scholarship') AND r.payment_done_at IS NULL AND r.paid_at IS NULL`,
-      sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND r.status != 'resolved' AND r.action_done_at IS NULL AND (r.payment_done_at IS NOT NULL OR r.paid_at IS NOT NULL)`,
-      sql`SELECT COUNT(*)::int as c FROM reminders r JOIN deposits d ON d.id = r.deposit_id WHERE r.owner_id = ${ownerId} AND r.month_bucket = ${monthBucket} AND r.scheduled_for <= ${nowIso} AND (
-        (d.deposit_type IN ('salary_slip','kollel_scholarship') AND r.action_done_at IS NOT NULL AND (r.payment_done_at IS NOT NULL OR r.paid_at IS NOT NULL))
-        OR (d.deposit_type NOT IN ('salary_slip','kollel_scholarship') AND r.action_done_at IS NOT NULL)
-      )`,
-    ]);
-
-  const neitherCount = getCount(neitherRow);
-  const doneUnpaidCount = getCount(doneUnpaidRow);
-  const paidUndoneCount = getCount(paidUndoneRow);
-  const fullyDoneCount = getCount(fullyDoneRow);
-
   const activeIds = getActiveDashboardCards(user.dashboardCards || null);
   const stats = activeIds.map((id) => allCards[id]).filter(Boolean) as KpiCard[];
-
-  // Override resolved card to documentation-based "both done"
-  if (allCards.resolved) {
-    allCards.resolved.value = fullyDoneCount;
-    allCards.resolved.hint = "בוצע וגם שולם (לפי תיעוד)";
-  }
-  if (allCards.payment_pending) {
-    allCards.payment_pending.value = doneUnpaidCount;
-  }
-  if (allCards.action_pending) {
-    // keep action pending from earlier query
-  }
 
   const now = new Date();
   const hour = now.getHours();
@@ -272,15 +301,15 @@ export default async function Home() {
             {greeting}
             {firstName ? `, ${firstName}` : ""} · {formatDateHe(now)}
           </div>
-          <h1 className="section-title mb-3">לוח בקרה</h1>
+          <h1 className="section-title mb-3">לוח בקרה הפקדות</h1>
           <p className="section-subtitle">
-            סקירה חודשית לפי תיעוד ביצוע ותשלום
+            סקירה לפי תיעוד ביצוע ותשלום — אותם מספרים כמו בלשונית הפקדות
           </p>
         </div>
 
         <div className="flex gap-3 flex-wrap">
-          <Link href="/reminders" className="btn-primary">
-            <BellRing size={18} /> כל התזכורות
+          <Link href="/deposits" className="btn-primary">
+            <Banknote size={18} /> ניהול הפקדות
           </Link>
           <Link href="/settings?tab=dashboard" className="btn-ghost">
             <Settings size={16} /> התאמה אישית
@@ -305,7 +334,6 @@ export default async function Home() {
         </div>
       )}
 
-      {/* Highlight strip — לפי תיעוד */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <HighlightCard
           title="לא בוצע ולא שולם"
@@ -329,7 +357,7 @@ export default async function Home() {
           href="/deposits?tab=paid"
         />
         <HighlightCard
-          title="טופלו החודש"
+          title="טופלו (ארכיון)"
           value={fullyDoneCount}
           description="בוצע וגם שולם (לפי תיעוד)"
           accent="green"
@@ -364,7 +392,10 @@ export default async function Home() {
                 key={s.id}
                 href={s.href}
                 className="kpi-card group animate-fade-in-up"
-                style={{ animationDelay: `${i * 60}ms`, animationFillMode: "backwards" }}
+                style={{
+                  animationDelay: `${i * 60}ms`,
+                  animationFillMode: "backwards",
+                }}
               >
                 <div className="relative flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -373,9 +404,7 @@ export default async function Home() {
                       <AnimatedCounter value={s.value} />
                     </div>
                     {s.hint && (
-                      <div className="text-xs text-navy-600 mt-2">
-                        {s.hint}
-                      </div>
+                      <div className="text-xs text-navy-600 mt-2">{s.hint}</div>
                     )}
                   </div>
                   <div className={`kpi-icon ${s.color}`}>
@@ -414,6 +443,19 @@ export default async function Home() {
   );
 }
 
+function formatDateHe(d: Date): string {
+  try {
+    return new Intl.DateTimeFormat("he-IL", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(d);
+  } catch {
+    return d.toLocaleDateString("he-IL");
+  }
+}
+
 function HighlightCard({
   title,
   value,
@@ -424,65 +466,25 @@ function HighlightCard({
   title: string;
   value: number;
   description: string;
-  accent: "amber" | "gold" | "green" | "rose";
+  accent: "amber" | "gold" | "rose" | "green";
   href: string;
 }) {
-  const accentStyles: Record<string, string> = {
-    amber: "border-amber-400/40 hover:border-amber-500/60",
-    gold: "border-gold-400/45 hover:border-gold-500/70",
-    green: "border-teal-400/40 hover:border-teal-500/70",
-    rose: "border-rose-400/40 hover:border-rose-500/60",
-  };
-  const gradients: Record<string, string> = {
-    amber:
-      "linear-gradient(135deg, rgba(252,251,244,1) 0%, rgba(254,243,199,0.7) 100%)",
-    gold:
-      "linear-gradient(135deg, rgba(252,251,244,1) 0%, rgba(245,236,198,0.75) 100%)",
-    green:
-      "linear-gradient(135deg, rgba(252,251,244,1) 0%, rgba(211,245,238,0.7) 100%)",
-    rose:
-      "linear-gradient(135deg, rgba(252,251,244,1) 0%, rgba(254,226,226,0.7) 100%)",
-  };
-  const blobColor: Record<string, string> = {
-    amber: "rgba(245,158,11,0.35)",
-    gold: "rgba(212,175,55,0.4)",
-    green: "rgba(54,153,137,0.32)",
-    rose: "rgba(244,63,94,0.3)",
-  };
-  const valueTint: Record<string, string> = {
-    amber: "gradient-text-gold",
-    gold: "gradient-text-gold",
-    green: "gradient-text-teal",
-    rose: "text-rose-700",
+  const tones: Record<string, string> = {
+    amber: "from-amber-50 to-amber-100/40 border-amber-200",
+    gold: "from-gold-50 to-gold-100/30 border-gold-300/50",
+    rose: "from-rose-50 to-rose-100/40 border-rose-200",
+    green: "from-teal-50 to-emerald-50 border-teal-200",
   };
   return (
     <Link
       href={href}
-      className={`relative overflow-hidden rounded-2xl p-5 border group ${accentStyles[accent]} transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_20px_45px_-12px_rgba(0,33,71,0.2)]`}
-      style={{ background: gradients[accent] }}
+      className={`rounded-2xl border bg-gradient-to-br ${tones[accent]} p-5 hover:shadow-md transition-shadow block`}
     >
-      <div
-        className="absolute -bottom-16 -left-16 w-40 h-40 rounded-full blur-3xl opacity-40 group-hover:opacity-70 transition-opacity duration-500"
-        style={{ background: blobColor[accent] }}
-      />
-      <div className="relative">
-        <div className="text-sm text-navy-700 mb-1 font-semibold">{title}</div>
-        <div
-          className={`text-fluid-3xl font-black leading-none mb-2 font-heading ${valueTint[accent]}`}
-        >
-          <AnimatedCounter value={value} />
-        </div>
-        <div className="text-xs text-navy-600">{description}</div>
+      <div className="text-sm font-semibold text-navy-800 mb-1">{title}</div>
+      <div className="text-3xl font-heading font-bold text-navy-950 mb-1">
+        <AnimatedCounter value={value} />
       </div>
+      <div className="text-xs text-navy-600">{description}</div>
     </Link>
   );
-}
-
-function formatDateHe(d: Date) {
-  return d.toLocaleDateString("he-IL", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
 }

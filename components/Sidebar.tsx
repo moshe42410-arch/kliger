@@ -30,7 +30,7 @@ interface NavItem {
 }
 
 const mainNav: NavItem[] = [
-  { href: "/", label: "לוח בקרה", icon: LayoutDashboard },
+  { href: "/", label: "לוח בקרה הפקדות", icon: LayoutDashboard },
   { href: "/clients", label: "לקוחות", icon: Users },
   { href: "/contacts", label: "אנשי קשר", icon: ContactRound },
   { href: "/deposits", label: "הפקדות", icon: Banknote },

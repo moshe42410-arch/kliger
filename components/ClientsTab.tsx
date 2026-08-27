@@ -29,6 +29,7 @@ import {
 interface ClientFormState {
   id?: string;
   name: string;
+  nationalId: string;
   emails: string[];
   phones: string[];
   reminderChannel: ReminderChannel;
@@ -45,6 +46,7 @@ interface ClientFormState {
 
 const emptyForm: ClientFormState = {
   name: "",
+  nationalId: "",
   emails: [""],
   phones: [""],
   reminderChannel: "email",
@@ -187,6 +189,7 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
     setForm({
       id: c.id,
       name: c.name,
+      nationalId: c.nationalId || "",
       emails: c.emails.length ? c.emails : [""],
       phones: c.phones.length ? c.phones : [""],
       reminderChannel: c.reminderChannel,
@@ -211,6 +214,7 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
     try {
       const payload = {
         name: form.name.trim(),
+        nationalId: form.nationalId.trim() || null,
         emails: form.emails.map((e) => e.trim()).filter(Boolean),
         phones: form.phones.map((p) => p.trim()).filter(Boolean),
         reminderChannel: form.reminderChannel,
@@ -540,15 +544,33 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
             </div>
 
             <div className="space-y-5">
-              <div>
-                <label className="label">שם הלקוח *</label>
-                <input
-                  className="input"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="לדוגמה: ישראל ישראלי"
-                  autoFocus
-                />
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="label">שם הלקוח *</label>
+                  <input
+                    className="input"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="לדוגמה: ישראל ישראלי"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="label">מ.ז</label>
+                  <input
+                    className="input"
+                    dir="ltr"
+                    value={form.nationalId}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        nationalId: e.target.value.replace(/[^\d]/g, ""),
+                      })
+                    }
+                    placeholder="מספר זהות"
+                    inputMode="numeric"
+                  />
+                </div>
               </div>
 
               <div className="grid sm:grid-cols-2 gap-4">

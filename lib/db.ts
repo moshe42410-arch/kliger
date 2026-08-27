@@ -337,6 +337,7 @@ export interface ClientRow {
   property_value: number | null;
   property_address: string | null;
   existing_mortgage: number | null;
+  national_id: string | null;
   drive_folder_url: string | null;
   drive_folder_id: string | null;
   income_snapshot: string | null;
@@ -364,6 +365,8 @@ export interface Client {
   propertyAddress: string | null;
   /** יתרת משכנתא קיימת על הנכס (אופציונלי) */
   existingMortgage: number | null;
+  /** מספר זהות / דרכון */
+  nationalId: string | null;
   driveFolderUrl: string | null;
   driveFolderId: string | null;
   incomeSnapshot: IncomeSnapshot | null;
@@ -400,6 +403,7 @@ export function parseClient(row: ClientRow): Client {
       row.existing_mortgage == null || row.existing_mortgage === undefined
         ? null
         : Number(row.existing_mortgage),
+    nationalId: row.national_id ?? null,
     driveFolderUrl: row.drive_folder_url ?? null,
     driveFolderId: row.drive_folder_id ?? null,
     incomeSnapshot: parseIncomeSnapshotJson(row.income_snapshot),

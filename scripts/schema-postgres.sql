@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS clients (
   property_value DOUBLE PRECISION,
   property_address TEXT,
   existing_mortgage DOUBLE PRECISION,
+  national_id TEXT,
   drive_folder_url TEXT,
   drive_folder_id TEXT,
   income_snapshot TEXT,

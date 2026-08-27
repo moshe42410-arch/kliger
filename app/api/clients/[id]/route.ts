@@ -47,6 +47,10 @@ function parseCaseFields(body: Record<string, unknown>) {
     body.spouseEmail != null ? String(body.spouseEmail).trim() || null : null;
   const spousePhone =
     body.spousePhone != null ? String(body.spousePhone).trim() || null : null;
+  const nationalId =
+    body.nationalId != null
+      ? String(body.nationalId).trim().replace(/\D/g, "") || null
+      : null;
   return {
     caseType,
     bank,
@@ -59,6 +63,7 @@ function parseCaseFields(body: Record<string, unknown>) {
     spouseName,
     spouseEmail,
     spousePhone,
+    nationalId,
   };
 }
 
@@ -122,6 +127,7 @@ export async function PUT(
           spouse_name = ${caseFields.spouseName},
           spouse_email = ${caseFields.spouseEmail},
           spouse_phone = ${caseFields.spousePhone},
+          national_id = ${caseFields.nationalId},
           updated_at = ${nowIso()}
       WHERE id = ${params.id}
     `;

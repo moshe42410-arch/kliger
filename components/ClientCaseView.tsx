@@ -48,6 +48,10 @@ import {
 } from "@/lib/affordability";
 import { normalizeDriveFolderUrl } from "@/lib/drive-folder";
 import { ClientDocumentsPanel } from "@/components/ClientDocumentsPanel";
+import {
+  DriveFolderPickerModal,
+  type PickedDriveFolder,
+} from "@/components/DriveFolderPickerModal";
 
 type CalcTrancheRow = {
   id: string;
@@ -137,6 +141,7 @@ export function ClientCaseView({ initialClient }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: initialClient.name,
+    nationalId: initialClient.nationalId || "",
     emails: initialClient.emails.length ? initialClient.emails : [""],
     phones: initialClient.phones.length ? initialClient.phones : [""],
     reminderChannel: initialClient.reminderChannel as ReminderChannel,
@@ -172,6 +177,8 @@ export function ClientCaseView({ initialClient }: Props) {
   ]);
   const [calcCaseAmount, setCalcCaseAmount] = useState("");
   const [applyingCalc, setApplyingCalc] = useState(false);
+  const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  const [showPasteDriveUrl, setShowPasteDriveUrl] = useState(false);
 
   useEffect(() => {
     setClient(initialClient);
@@ -273,6 +280,7 @@ export function ClientCaseView({ initialClient }: Props) {
     try {
       const payload = {
         name: form.name.trim(),
+        nationalId: form.nationalId.trim() || null,
         emails: form.emails.map((e) => e.trim()).filter(Boolean),
         phones: form.phones.map((p) => p.trim()).filter(Boolean),
         reminderChannel: form.reminderChannel,
@@ -309,6 +317,58 @@ export function ClientCaseView({ initialClient }: Props) {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveDriveFolderLink(opts: {
+    driveFolderUrl: string | null;
+    driveFolderId: string | null;
+  }) {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/clients/${client.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: client.name,
+          emails: client.emails,
+          phones: client.phones,
+          reminderChannel: client.reminderChannel,
+          caseType: client.caseType,
+          bank: client.bank,
+          requiredAmount: client.requiredAmount,
+          propertyValue: client.propertyValue,
+          existingMortgage: client.existingMortgage,
+          propertyAddress: client.propertyAddress,
+          driveFolderUrl: opts.driveFolderUrl,
+          driveFolderId: opts.driveFolderId,
+          spouseName: client.spouseName,
+          spouseEmail: client.spouseEmail,
+          spousePhone: client.spousePhone,
+          nationalId: client.nationalId,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || "שמירה נכשלה");
+      }
+      const saved: Client = await res.json();
+      setClient(saved);
+      setForm((f) => ({
+        ...f,
+        driveFolderUrl: saved.driveFolderUrl || "",
+      }));
+      router.refresh();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onPickDriveFolder(folder: PickedDriveFolder) {
+    await saveDriveFolderLink({
+      driveFolderUrl: folder.url,
+      driveFolderId: folder.id,
+    });
   }
 
   async function uploadExcel(file: File) {
@@ -428,6 +488,7 @@ export function ClientCaseView({ initialClient }: Props) {
             spouseName: client.spouseName,
             spouseEmail: client.spouseEmail,
             spousePhone: client.spousePhone,
+            nationalId: client.nationalId,
           }),
         });
         if (!res.ok) {
@@ -603,6 +664,22 @@ export function ClientCaseView({ initialClient }: Props) {
                 className="input"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="label">מ.ז</label>
+              <input
+                className="input"
+                dir="ltr"
+                value={form.nationalId}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    nationalId: e.target.value.replace(/[^\d]/g, ""),
+                  })
+                }
+                placeholder="מספר זהות"
+                inputMode="numeric"
               />
             </div>
             <div>
@@ -826,6 +903,7 @@ export function ClientCaseView({ initialClient }: Props) {
         <ClientDocumentsPanel
           clientId={client.id}
           clientName={client.name}
+          clientNationalId={client.nationalId}
           clientEmails={client.emails}
           hasDriveFolder={Boolean(
             client.driveFolderUrl || client.driveFolderId
@@ -836,92 +914,120 @@ export function ClientCaseView({ initialClient }: Props) {
           <h3 className="font-heading font-bold text-navy-900 mb-2">
             תיקיית Google Drive
           </h3>
-          {!client.driveFolderUrl ? (
+          {!client.driveFolderUrl && !client.driveFolderId ? (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-              לא חוברה תיקייה. הדביקו קישור לתיקיית הלקוח בדרייב ושמרו — ואז
-              הקבצים יסונכרנו אוטומטית לכאן (בפתיחת התיק ובכל שעה ברקע).
+              לא חוברה תיקייה. בחרו תיקייה מהדרייב המחובר לחשבון — ואז הקבצים
+              יסונכרנו אוטומטית לכאן.
             </div>
           ) : (
             <div className="mb-4 rounded-xl border border-navy-100 bg-navy-50 px-4 py-3 text-sm text-navy-800">
               תיקייה מחוברת
-              {client.driveFolderId ? (
-                <span className="text-navy-500" dir="ltr">
-                  {" "}
-                  · id: {client.driveFolderId}
-                </span>
+              {client.driveFolderUrl ? (
+                <a
+                  href={client.driveFolderUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block mt-1 underline text-navy-800 truncate"
+                  dir="ltr"
+                >
+                  {client.driveFolderUrl}
+                </a>
               ) : null}
             </div>
           )}
 
-          <label className="label">קישור לתיקיית דרייב</label>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <input
-              className="input flex-1"
-              dir="ltr"
-              placeholder="https://drive.google.com/drive/folders/…"
-              value={form.driveFolderUrl}
-              onChange={(e) =>
-                setForm({ ...form, driveFolderUrl: e.target.value })
-              }
-            />
+          <div className="flex flex-wrap gap-2 mb-3">
             <button
-              className="btn-secondary shrink-0"
-              onClick={async () => {
-                setSaving(true);
-                setError(null);
-                try {
-                  const { url, folderId } = normalizeDriveFolderUrl(
-                    form.driveFolderUrl
-                  );
-                  const res = await fetch(`/api/clients/${client.id}`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      name: client.name,
-                      emails: client.emails,
-                      phones: client.phones,
-                      reminderChannel: client.reminderChannel,
-                      caseType: client.caseType,
-                      bank: client.bank,
-                      requiredAmount: client.requiredAmount,
-                      propertyValue: client.propertyValue,
-                      existingMortgage: client.existingMortgage,
-                      propertyAddress: client.propertyAddress,
-                      driveFolderUrl: url,
-                      driveFolderId: folderId,
-                      spouseName: client.spouseName,
-                      spouseEmail: client.spouseEmail,
-                      spousePhone: client.spousePhone,
-                    }),
-                  });
-                  if (!res.ok) throw new Error("שמירה נכשלה");
-                  const saved: Client = await res.json();
-                  setClient(saved);
-                  setForm((f) => ({
-                    ...f,
-                    driveFolderUrl: saved.driveFolderUrl || "",
-                  }));
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : String(e));
-                } finally {
-                  setSaving(false);
-                }
-              }}
+              type="button"
+              className="btn-primary"
+              disabled={saving}
+              onClick={() => setDrivePickerOpen(true)}
             >
-              שמור קישור
+              <FolderOpen size={16} />
+              {client.driveFolderId ? "החלף תיקייה…" : "בחרו תיקייה מדרייב…"}
             </button>
+            {client.driveFolderUrl && (
+              <a
+                href={client.driveFolderUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-secondary"
+              >
+                פתח בדרייב
+              </a>
+            )}
+            {(client.driveFolderUrl || client.driveFolderId) && (
+              <button
+                type="button"
+                className="btn-ghost text-red-700"
+                disabled={saving}
+                onClick={() => {
+                  void saveDriveFolderLink({
+                    driveFolderUrl: null,
+                    driveFolderId: null,
+                  }).catch((e) =>
+                    setError(e instanceof Error ? e.message : String(e))
+                  );
+                }}
+              >
+                נתק תיקייה
+              </button>
+            )}
           </div>
-          {client.driveFolderUrl && (
-            <a
-              href={client.driveFolderUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm text-navy-800 underline mt-2 inline-block"
-              dir="ltr"
-            >
-              פתח תיקייה בדרייב
-            </a>
+
+          <button
+            type="button"
+            className="text-xs text-navy-500 underline mb-2"
+            onClick={() => setShowPasteDriveUrl((v) => !v)}
+          >
+            {showPasteDriveUrl
+              ? "הסתר הדבקת קישור"
+              : "או הדביקו קישור ידנית"}
+          </button>
+
+          {showPasteDriveUrl && (
+            <>
+              <label className="label">קישור לתיקיית דרייב</label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  className="input flex-1"
+                  dir="ltr"
+                  placeholder="https://drive.google.com/drive/folders/…"
+                  value={form.driveFolderUrl}
+                  onChange={(e) =>
+                    setForm({ ...form, driveFolderUrl: e.target.value })
+                  }
+                />
+                <button
+                  className="btn-secondary shrink-0"
+                  disabled={saving}
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        const { url, folderId } = normalizeDriveFolderUrl(
+                          form.driveFolderUrl
+                        );
+                        await saveDriveFolderLink({
+                          driveFolderUrl: url,
+                          driveFolderId: folderId,
+                        });
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : String(e));
+                      }
+                    })();
+                  }}
+                >
+                  שמור קישור
+                </button>
+              </div>
+            </>
           )}
+
+          <DriveFolderPickerModal
+            open={drivePickerOpen}
+            onClose={() => setDrivePickerOpen(false)}
+            onPick={onPickDriveFolder}
+          />
         </div>
       </section>
 

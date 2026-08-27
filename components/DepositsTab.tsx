@@ -36,6 +36,7 @@ import {
   scholarshipDeliveryLabel,
   depositRequiresPayment,
 } from "@/lib/types";
+import { depositDocBucket } from "@/lib/deposit-doc-buckets";
 
 interface FormState {
   id?: string;
@@ -397,17 +398,7 @@ export function DepositsTab({
     d: Deposit,
     rem: Reminder | undefined
   ): "pending" | "done" | "paid" | "archive" {
-    if (!rem) return "pending";
-    const action = !!rem.actionDoneAt;
-    const paid = !!(rem.paymentDoneAt || rem.paidAt);
-    const needsPay = depositRequiresPayment(d.depositType);
-    if (!needsPay) {
-      return action ? "archive" : "pending";
-    }
-    if (action && paid) return "archive";
-    if (action && !paid) return "done";
-    if (!action && paid) return "paid";
-    return "pending";
+    return depositDocBucket(d.depositType, rem);
   }
 
   const filteredDeposits = useMemo(() => {
