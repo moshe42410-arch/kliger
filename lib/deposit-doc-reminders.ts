@@ -2,11 +2,19 @@
  * Choose which monthly primary reminder is "תיעוד החודש" for a deposit.
  * After the deposit day has passed, that month stays the active doc month
  * until it is fully archived — we must not drop it on refresh.
+ *
+ * Client-safe: no Node/DB runtime imports (used from DepositsTab).
  */
 import { parseISO, startOfDay } from "date-fns";
 import type { Deposit, Reminder } from "./db";
-import { monthBucketOf } from "./db";
 import { isDepositDocComplete } from "./deposit-doc-buckets";
+
+function monthBucketOf(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const y = d.getFullYear();
+  const m = (d.getMonth() + 1).toString().padStart(2, "0");
+  return `${y}-${m}`;
+}
 
 function daysInMonth(year: number, month1to12: number): number {
   return new Date(year, month1to12, 0).getDate();
