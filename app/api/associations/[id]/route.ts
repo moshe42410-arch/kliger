@@ -7,6 +7,7 @@ import {
   type AssociationRow,
 } from "@/lib/db";
 import { getCurrentOwnerId } from "@/lib/auth";
+import { parseHandlingQueue } from "@/lib/association-queue";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export async function PUT(
       ? String(body.accountNumber).trim()
       : null;
     const notes = body.notes ? String(body.notes) : null;
-    const handlingQueue = body.handlingQueue === "unpaid" ? "unpaid" : "done";
+    const handlingQueue = parseHandlingQueue(body.handlingQueue);
 
     if (!name) return NextResponse.json({ error: "שם חובה" }, { status: 400 });
 

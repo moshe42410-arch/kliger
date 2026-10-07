@@ -1,17 +1,19 @@
-export type AssociationHandlingQueue = "done" | "unpaid";
+export type AssociationHandlingQueue = "paid" | "both";
 
+/** ערכים ישנים נשמרים במסד: done → paid, unpaid → both. */
 export function parseHandlingQueue(value: unknown): AssociationHandlingQueue {
-  return value === "unpaid" ? "unpaid" : "done";
+  if (value === "both" || value === "unpaid") return "both";
+  return "paid";
 }
 
 export function handlingQueueLabel(queue: AssociationHandlingQueue): string {
-  return queue === "unpaid"
-    ? "גם מה שממתין לסימון שולם"
-    : "רק מה שסומן בוצע";
+  return queue === "both"
+    ? "ממתינים גם לשולם וגם לבוצע"
+    : "רק מה שסומן שולם וממתין לבוצע";
 }
 
 export function associationQueueHint(queue: AssociationHandlingQueue): string {
-  return queue === "unpaid"
-    ? "נשלח גם מה שעדיין לא סומן כשולם"
-    : "נשלח רק מה שסומן בוצע ועדיין לא שולם";
+  return queue === "both"
+    ? "נשלח מה שעדיין לא סומן שולם ולא בוצע"
+    : "נשלח רק מה שסומן שולם ועדיין לא בוצע";
 }

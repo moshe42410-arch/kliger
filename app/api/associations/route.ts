@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { ensureSchemaExtras, getSql, parseAssociation, type AssociationRow } from "@/lib/db";
 import { getCurrentOwnerId } from "@/lib/auth";
+import { parseHandlingQueue } from "@/lib/association-queue";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
       ? String(body.accountNumber).trim()
       : null;
     const notes = body.notes ? String(body.notes) : null;
-    const handlingQueue = body.handlingQueue === "unpaid" ? "unpaid" : "done";
+    const handlingQueue = parseHandlingQueue(body.handlingQueue);
 
     if (!name) return NextResponse.json({ error: "שם העמותה חובה" }, { status: 400 });
 

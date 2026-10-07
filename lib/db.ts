@@ -547,8 +547,8 @@ export interface Association {
   branchNumber: string | null;
   accountNumber: string | null;
   notes: string | null;
-  /** done = רק חודשים שסומנו בוצע. unpaid = גם חודשים שממתינים לסימון שולם. */
-  handlingQueue: "done" | "unpaid";
+  /** paid = סומן שולם וממתין לבוצע. both = ממתין גם לשולם וגם לבוצע. */
+  handlingQueue: "paid" | "both";
   createdAt: string;
   updatedAt: string;
 }
@@ -563,7 +563,10 @@ export function parseAssociation(row: AssociationRow): Association {
     branchNumber: row.branch_number,
     accountNumber: row.account_number,
     notes: row.notes,
-    handlingQueue: row.handling_queue === "unpaid" ? "unpaid" : "done",
+    handlingQueue:
+      row.handling_queue === "both" || row.handling_queue === "unpaid"
+        ? "both"
+        : "paid",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

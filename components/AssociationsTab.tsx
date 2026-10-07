@@ -14,7 +14,10 @@ import {
   Send,
 } from "lucide-react";
 import type { Association } from "@/lib/db";
-import { associationQueueHint } from "@/lib/association-queue";
+import {
+  associationQueueHint,
+  type AssociationHandlingQueue,
+} from "@/lib/association-queue";
 
 interface FormState {
   id?: string;
@@ -24,7 +27,7 @@ interface FormState {
   branchNumber: string;
   accountNumber: string;
   notes: string;
-  handlingQueue: "done" | "unpaid";
+  handlingQueue: AssociationHandlingQueue;
 }
 
 const emptyForm: FormState = {
@@ -34,7 +37,7 @@ const emptyForm: FormState = {
   branchNumber: "",
   accountNumber: "",
   notes: "",
-  handlingQueue: "done",
+  handlingQueue: "paid",
 };
 
 export function AssociationsTab({
@@ -69,7 +72,7 @@ export function AssociationsTab({
       branchNumber: a.branchNumber || "",
       accountNumber: a.accountNumber || "",
       notes: a.notes || "",
-      handlingQueue: a.handlingQueue === "unpaid" ? "unpaid" : "done",
+      handlingQueue: a.handlingQueue === "both" ? "both" : "paid",
     });
     setShowForm(true);
     setError(null);
@@ -347,15 +350,17 @@ export function AssociationsTab({
                       type="radio"
                       name="handlingQueue"
                       className="mt-1"
-                      checked={form.handlingQueue === "done"}
+                      checked={form.handlingQueue === "paid"}
                       onChange={() =>
-                        setForm({ ...form, handlingQueue: "done" })
+                        setForm({ ...form, handlingQueue: "paid" })
                       }
                     />
                     <span>
-                      <span className="font-semibold">רק מה שסומן בוצע</span>
+                      <span className="font-semibold">
+                        רק מה שסומן שולם וממתין לבוצע
+                      </span>
                       <span className="block text-xs text-navy-500">
-                        יישלחו חודשים שסומנו בוצע ועדיין לא שולמו.
+                        יישלחו חודשים שסומנו שולם ועדיין לא סומנו בוצע.
                       </span>
                     </span>
                   </label>
@@ -364,18 +369,18 @@ export function AssociationsTab({
                       type="radio"
                       name="handlingQueue"
                       className="mt-1"
-                      checked={form.handlingQueue === "unpaid"}
+                      checked={form.handlingQueue === "both"}
                       onChange={() =>
-                        setForm({ ...form, handlingQueue: "unpaid" })
+                        setForm({ ...form, handlingQueue: "both" })
                       }
                     />
                     <span>
                       <span className="font-semibold">
-                        גם מה שממתין לסימון שולם
+                        ממתינים גם לשולם וגם לבוצע
                       </span>
                       <span className="block text-xs text-navy-500">
-                        יישלחו גם חודשים שעדיין לא סומנו כשולם, גם אם בוצע עוד
-                        לא סומן.
+                        יישלחו חודשים שעדיין לא סומנו שולם ולא בוצע. מה שכבר
+                        סומן בוצע לא נשלח.
                       </span>
                     </span>
                   </label>

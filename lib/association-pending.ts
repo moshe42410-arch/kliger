@@ -23,10 +23,10 @@ export function waitsForAssociation(
   actionDone: boolean,
   paid: boolean
 ): boolean {
-  const needsPay = depositRequiresPayment(depositType);
-  if (!needsPay || paid) return false;
-  if (queue === "done") return actionDone;
-  return true;
+  if (actionDone) return false;
+  if (!depositRequiresPayment(depositType)) return false;
+  if (queue === "paid") return paid;
+  return !paid;
 }
 
 function monthLabel(bucket: string): string {

@@ -106,7 +106,7 @@ export const TEMPLATE_VARIABLES: TemplateVar[] = [
   {
     key: "queueLabel",
     label: "כלל ההמתנה של העמותה",
-    example: "רק מה שסומן בוצע",
+    example: "רק מה שסומן שולם וממתין לבוצע",
   },
   {
     key: "remindersLink",
