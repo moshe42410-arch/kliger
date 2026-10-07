@@ -252,6 +252,12 @@ export function AssociationsTab({
                   <Send size={14} />
                   {sendingId === a.id ? "שולח..." : "שלח התראה מרוכזת"}
                 </button>
+                <a
+                  className="btn-ghost text-sm"
+                  href="/settings?tab=templates&template=association_pending_digest"
+                >
+                  ניסוח המייל
+                </a>
                 <button className="btn-ghost" onClick={() => openEdit(a)}>
                   <Edit3 size={16} /> עריכה
                 </button>

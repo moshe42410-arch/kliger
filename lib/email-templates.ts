@@ -100,8 +100,13 @@ export const TEMPLATE_VARIABLES: TemplateVar[] = [
   { key: "itemCount", label: "מספר פריטים בסיכום", example: "5" },
   {
     key: "digestBody",
-    label: "גוף סיכום ממתינים",
-    example: "ממתינים לביצוע פעולה (2):\n• …",
+    label: "רשימת ההפקדות בטקסט",
+    example: "אוקטובר 2026 — יוסי כהן — ₪1,000",
+  },
+  {
+    key: "digestTable",
+    label: "טבלת ההפקדות במייל",
+    example: "כרטיס לכל הפקדה ממתינה",
   },
   {
     key: "queueLabel",
@@ -297,13 +302,14 @@ export const TEMPLATE_META: TemplateMeta[] = [
     id: "association_pending_digest",
     label: "התראה מרוכזת לעמותה",
     description:
-      "נשלח לעמותה בלחיצה, עם כל ההפקדות שממתינות לטיפול לפי ההגדרה שלה",
+      "הטקסט שנשמר כאן הוא בדיוק המייל לעמותה. {digestTable} הוא כרטיס לכל הפקדה ממתינה.",
     category: "ops",
     audience: "association",
     variableKeys: V(
       "associationName",
       "itemCount",
       "queueLabel",
+      "digestTable",
       "digestBody",
       "companyName"
     ),
@@ -512,11 +518,9 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
     subject: "הפקדות ממתינות לטיפול — {associationName} ({itemCount})",
     body: `לכבוד {associationName},
 
-להלן {itemCount} הפקדות שממתינות לטיפולכם.
-כלל השליחה: {queueLabel}.
+להלן {itemCount} הפקדות שממתינות לטיפולכם:
 
-חודש | מקבל | מעביר | סכום | סוג | תאריך יעד | בוצע | שולם
-{digestBody}
+{digestTable}
 
 בברכה,
 {companyName}`,
@@ -593,6 +597,21 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
  */
 /** נוסחים ישנים שנשמרו כמו שהיו מהמערכת — מוחלפים בברירת המחדל החדשה. */
 const LEGACY_TEMPLATES: Partial<Record<TemplateId, Template[]>> = {
+  association_pending_digest: [
+    {
+      subject: "הפקדות ממתינות לטיפול — {associationName} ({itemCount})",
+      body: `לכבוד {associationName},
+
+להלן {itemCount} הפקדות שממתינות לטיפולכם.
+כלל השליחה: {queueLabel}.
+
+חודש | מקבל | מעביר | סכום | סוג | תאריך יעד | בוצע | שולם
+{digestBody}
+
+בברכה,
+{companyName}`,
+    },
+  ],
   client_primary: [
     {
       subject: "תזכורת: {depositType} — {amount}",

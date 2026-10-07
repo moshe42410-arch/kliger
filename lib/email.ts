@@ -203,6 +203,10 @@ export interface SendEmailOptions {
   includeLogo?: boolean;
   /** כתובת שאליה מגיעה תשובה של הנמען. ברירת מחדל: כתובת השולח. */
   replyTo?: string | null;
+  /** קטעי HTML שמוחלפים אחרי בניית המייל, למשל טבלת הפקדות. */
+  htmlParts?: Record<string, string>;
+  /** אותו מפתח, בגרסת טקסט רגיל. */
+  textParts?: Record<string, string>;
 }
 
 export async function sendEmail(opts: SendEmailOptions): Promise<{
@@ -231,14 +235,17 @@ export async function sendEmail(opts: SendEmailOptions): Promise<{
         : `${appUrl}/api/users/${user.id}/logo/image?v=${encodeURIComponent(user.logoFilename)}`
       : null;
 
-  const html = wantBranded
-    ? htmlWrap(opts.body, {
-        advisorName: fromName,
-        advisorLogoUrl,
-        advisorSubtitle: opts.brandSubtitle ?? user?.phone ?? null,
-      })
-    : plainHtmlWrap(opts.body);
-  const text = opts.body.replace(/<[^>]+>/g, "");
+  const html = applyParts(
+    wantBranded
+      ? htmlWrap(opts.body, {
+          advisorName: fromName,
+          advisorLogoUrl,
+          advisorSubtitle: opts.brandSubtitle ?? user?.phone ?? null,
+        })
+      : plainHtmlWrap(opts.body),
+    opts.htmlParts
+  );
+  const text = applyParts(opts.body, opts.textParts).replace(/<[^>]+>/g, "");
 
   try {
     // --- Path 1: Gmail API (OAuth) ---
@@ -405,6 +412,16 @@ function htmlWrap(body: string, opts: WrapOptions): string {
     </table>
   </body>
 </html>`;
+}
+
+function applyParts(source: string, parts?: Record<string, string>): string {
+  if (!parts) return source;
+  let out = source;
+  for (const [token, fragment] of Object.entries(parts)) {
+    if (!token) continue;
+    out = out.split(token).join(fragment);
+  }
+  return out;
 }
 
 function escapeHtml(str: string): string {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Save,
   RotateCcw,
@@ -52,6 +53,7 @@ export function EmailTemplatesEditor() {
   const [toast, setToast] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [previewOf, setPreviewOf] = useState<string | null>(null);
+  const sp = useSearchParams();
 
   useEffect(() => {
     load();
@@ -68,7 +70,14 @@ export function EmailTemplatesEditor() {
         setMeta(j.meta);
         if (Array.isArray(j.variables)) setVariables(j.variables);
         if (j.categoryLabels) setCategoryLabels(j.categoryLabels);
-        if (j.meta?.length && !expanded) setExpanded(j.meta[0].id);
+        if (j.meta?.length && !expanded) {
+          const wanted = sp?.get("template");
+          const known =
+            wanted && j.meta.some((m: TemplateMeta) => m.id === wanted)
+              ? wanted
+              : j.meta[0].id;
+          setExpanded(known);
+        }
       }
     } finally {
       setLoading(false);
