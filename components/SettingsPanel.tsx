@@ -57,6 +57,9 @@ export function SettingsPanel({ initialUser }: { initialUser: User }) {
   const [autoRemindersEnabled, setAutoRemindersEnabled] = useState(
     user.autoRemindersEnabled !== false
   );
+  const [notifyClientResponses, setNotifyClientResponses] = useState(
+    user.notifyClientResponses !== false
+  );
   const [savingProfile, setSavingProfile] = useState(false);
 
   // ----- Dashboard state -----
@@ -83,6 +86,7 @@ export function SettingsPanel({ initialUser }: { initialUser: User }) {
           phone: phone.trim(),
           companyName: companyName.trim(),
           autoRemindersEnabled,
+          notifyClientResponses,
         }),
       });
       const j = await res.json().catch(() => ({}));
@@ -90,6 +94,9 @@ export function SettingsPanel({ initialUser }: { initialUser: User }) {
       setUser(j);
       if (typeof j.autoRemindersEnabled === "boolean") {
         setAutoRemindersEnabled(j.autoRemindersEnabled);
+      }
+      if (typeof j.notifyClientResponses === "boolean") {
+        setNotifyClientResponses(j.notifyClientResponses);
       }
       notify("success", "הפרטים נשמרו");
       router.refresh();
@@ -301,7 +308,27 @@ export function SettingsPanel({ initialUser }: { initialUser: User }) {
                   </span>
                   <span className="block text-sm text-navy-600 mt-1">
                     כשפעיל — המערכת שולחת תזכורות אוטומטיות ליועץ ומייל סיכום יומי
-                    של ממתינים. שליחה ללקוח תמיד ידנית ממסך התזכורות.
+                    של ממתינים. שליחה ללקוח תמיד ידנית משורת ההפקדה.
+                  </span>
+                </span>
+              </label>
+            </div>
+            <div className="md:col-span-2 rounded-xl border border-navy-100 bg-navy-50/40 p-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={notifyClientResponses}
+                  onChange={(e) => setNotifyClientResponses(e.target.checked)}
+                />
+                <span>
+                  <span className="block font-semibold text-navy-950">
+                    מייל על כל תגובה של לקוח
+                  </span>
+                  <span className="block text-sm text-navy-600 mt-1">
+                    תשובה למייל עצמו מגיעה לתיבה שלך. בנוסף, כשלקוח מעלה קובץ,
+                    כותב הודעה או ממלא שם מעביר בקישור — נשלח אליך מייל עם
+                    הפרטים והקובץ. אפשר לכבות את המיילים מהקישור.
                   </span>
                 </span>
               </label>

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import {
+  ensureSchemaExtras,
   getSql,
   parseClient,
   parseDeposit,
@@ -14,19 +15,16 @@ import {
 import { getCurrentUser } from "@/lib/auth";
 import { ensureRemindersForDeposit } from "@/lib/reminders";
 import { DepositsTab } from "@/components/DepositsTab";
-import {
-  nearbyMonthBuckets,
-  pickOpenDocReminder,
-} from "@/lib/deposit-doc-reminders";
+import { listMonthDocReminders } from "@/lib/deposit-doc-reminders";
 
 export const dynamic = "force-dynamic";
 
 export default async function DepositsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  await ensureSchemaExtras();
   const sql = getSql();
   const ownerId = user.id;
-  const nowIso = new Date().toISOString();
 
   const [depositRows, clientRows, associationRows, reminderCounts] =
     await Promise.all([
@@ -56,21 +54,11 @@ export default async function DepositsPage() {
     }
   }
 
-  // תזכורות לתיעוד: חודש קודם / נוכחי / הבא + כל תזכורת שכבר סומנה
-  const { prev, current, next } = nearbyMonthBuckets(new Date());
+  // כל חודשי התיעוד: חודש נוכחי נפתח ב-1, וחודשים קודמים נשארים עד שנסגרים
   const dueRemRows = await sql`
     SELECT * FROM reminders
     WHERE owner_id = ${ownerId}
       AND phase = 'primary'
-      AND (
-        scheduled_for <= ${nowIso}
-        OR month_bucket = ${prev}
-        OR month_bucket = ${current}
-        OR month_bucket = ${next}
-        OR action_done_at IS NOT NULL
-        OR payment_done_at IS NOT NULL
-        OR paid_at IS NOT NULL
-      )
     ORDER BY target_date DESC
   `;
 
@@ -93,10 +81,9 @@ export default async function DepositsPage() {
     (byDeposit[r.depositId] ||= []).push(r);
   }
 
-  const monthByDeposit: Record<string, Reminder> = {};
+  const monthReminders: Reminder[] = [];
   for (const d of deposits) {
-    const picked = pickOpenDocReminder(byDeposit[d.id] || [], d);
-    if (picked) monthByDeposit[d.id] = picked;
+    monthReminders.push(...listMonthDocReminders(byDeposit[d.id] || []));
   }
 
   return (
@@ -105,7 +92,7 @@ export default async function DepositsPage() {
       clients={clients}
       associations={associations}
       reminderMeta={metaMap}
-      openReminders={monthByDeposit}
+      monthReminders={monthReminders}
     />
   );
 }

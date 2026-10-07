@@ -82,6 +82,22 @@ export function getSql(): Sql {
   return _sql;
 }
 
+let schemaExtras: Promise<void> | null = null;
+
+/** עמודות שנוספו אחרי הסכמה הראשונית. רץ פעם אחת לכל תהליך. */
+export function ensureSchemaExtras(): Promise<void> {
+  if (schemaExtras) return schemaExtras;
+  const sql = getSql();
+  schemaExtras = (async () => {
+    await sql`ALTER TABLE reminders ADD COLUMN IF NOT EXISTS payer_name TEXT`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_client_responses INTEGER NOT NULL DEFAULT 1`;
+  })().catch((err) => {
+    schemaExtras = null;
+    throw err;
+  });
+  return schemaExtras;
+}
+
 /**
  * Backward-compat alias for pre-async code. Prefer `getSql()`.
  * @deprecated Will be removed after migration completes.
@@ -201,6 +217,7 @@ export interface UserRow {
   gmail_connected_at: string | null;
   email_templates: string | null;
   auto_reminders_enabled: number | null;
+  notify_client_responses?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -220,6 +237,8 @@ export interface User {
   gmailConnected: boolean;
   emailTemplates: Record<string, { subject: string; body: string }> | null;
   autoRemindersEnabled: boolean;
+  /** מייל ליועץ על העלאה, הודעה או שם מעביר מהלקוח. ברירת מחדל: פעיל. */
+  notifyClientResponses: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -249,6 +268,8 @@ export function parseUser(row: UserRow): User {
     gmailConnected: !!row.gmail_refresh_token,
     emailTemplates: parseEmailTemplatesJson(row.email_templates),
     autoRemindersEnabled: row.auto_reminders_enabled == null ? true : !!row.auto_reminders_enabled,
+    notifyClientResponses:
+      row.notify_client_responses == null ? true : !!row.notify_client_responses,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -600,6 +621,7 @@ export interface ReminderRow {
   client_remind_at: string | null;
   month_bucket: string;
   carried_over: number;
+  payer_name?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -628,6 +650,7 @@ export interface Reminder {
   clientRemindAt: string | null;
   monthBucket: string;
   carriedOver: boolean;
+  payerName: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -657,6 +680,7 @@ export function parseReminder(row: ReminderRow): Reminder {
     clientRemindAt: row.client_remind_at ?? null,
     monthBucket: row.month_bucket,
     carriedOver: !!row.carried_over,
+    payerName: row.payer_name?.trim() || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

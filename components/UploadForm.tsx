@@ -10,8 +10,18 @@ import {
   Loader2,
 } from "lucide-react";
 
-export function UploadForm({ token }: { token: string }) {
+export function UploadForm({
+  token,
+  showPayer = false,
+  initialPayerName = "",
+}: {
+  token: string;
+  showPayer?: boolean;
+  initialPayerName?: string;
+}) {
   const [file, setFile] = useState<File | null>(null);
+  const [payerName, setPayerName] = useState(initialPayerName);
+  const [message, setMessage] = useState("");
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,13 +51,20 @@ export function UploadForm({ token }: { token: string }) {
     setDragActive(false);
   }, []);
 
+  const canSubmit =
+    !!file ||
+    message.trim().length > 0 ||
+    (showPayer && payerName.trim() !== initialPayerName.trim());
+
   async function submit() {
-    if (!file) return;
+    if (!canSubmit) return;
     setUploading(true);
     setError(null);
     try {
       const fd = new FormData();
-      fd.append("file", file);
+      if (file) fd.append("file", file);
+      if (showPayer) fd.append("payerName", payerName.trim());
+      if (message.trim()) fd.append("message", message.trim());
       const res = await fetch(`/api/upload/${token}`, {
         method: "POST",
         body: fd,
@@ -57,9 +74,9 @@ export function UploadForm({ token }: { token: string }) {
         throw new Error(j.error || "העלאה נכשלה");
       }
       setDone(true);
-      setTimeout(() => {
-        window.location.reload();
-      }, 2200);
+      setFile(null);
+      setMessage("");
+      if (inputRef.current) inputRef.current.value = "";
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -82,11 +99,18 @@ export function UploadForm({ token }: { token: string }) {
             <CheckCircle2 size={44} className="text-teal-600" />
           </div>
           <div className="font-heading font-bold text-fluid-lg text-navy-950">
-            האסמכתא התקבלה בהצלחה!
+            הפרטים נשלחו בהצלחה
           </div>
           <div className="text-sm mt-2 text-teal-800">
-            תודה רבה, הצוות יטפל בפניה בהקדם.
+            אפשר להעלות קובץ נוסף או לעדכן שוב באותו קישור.
           </div>
+          <button
+            type="button"
+            className="btn-secondary mt-4"
+            onClick={() => setDone(false)}
+          >
+            העלאת קובץ נוסף
+          </button>
         </div>
       </div>
     );
@@ -94,6 +118,35 @@ export function UploadForm({ token }: { token: string }) {
 
   return (
     <div className="space-y-4">
+      {showPayer && (
+        <div>
+          <label className="label" htmlFor="payer-name">
+            שם המעביר
+          </label>
+          <input
+            id="payer-name"
+            className="input"
+            value={payerName}
+            onChange={(e) => setPayerName(e.target.value)}
+            placeholder="שם בעל החשבון שממנו יצא הכסף"
+          />
+          <p className="text-xs text-navy-500 mt-1">
+            אם ההעברה אינה מהחשבון שלך, מלא כאן את שם המעביר לחודש הזה.
+          </p>
+        </div>
+      )}
+      <div>
+        <label className="label" htmlFor="client-message">
+          הודעה
+        </label>
+        <textarea
+          id="client-message"
+          className="input min-h-[88px] resize-y"
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="אפשר לכתוב כאן עדכון, גם בלי קובץ"
+        />
+      </div>
       <label
         onDrop={onDrop}
         onDragOver={onDragOver}
@@ -154,7 +207,7 @@ export function UploadForm({ token }: { token: string }) {
               {dragActive ? "שחרר כאן..." : "גרור לכאן או לחץ לבחירת קובץ"}
             </div>
             <div className="text-xs text-navy-600 mt-2">
-              מומלץ: PDF · אפשר גם תמונה / Word / Excel (עד 10MB)
+              PDF, תמונה, או כל קובץ אחר — עד 10MB. אפשר להעלות כמה קבצים.
             </div>
           </div>
         )}
@@ -162,7 +215,6 @@ export function UploadForm({ token }: { token: string }) {
           ref={inputRef}
           type="file"
           className="hidden"
-          accept=".pdf,application/pdf,image/*,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx"
           onChange={(e) => {
             setFile(e.target.files?.[0] ?? null);
             setError(null);
@@ -183,7 +235,7 @@ export function UploadForm({ token }: { token: string }) {
       <button
         className="btn-primary w-full text-fluid-base"
         onClick={submit}
-        disabled={!file || uploading}
+        disabled={!canSubmit || uploading}
       >
         {uploading ? (
           <>
@@ -193,7 +245,7 @@ export function UploadForm({ token }: { token: string }) {
         ) : (
           <>
             <Upload size={18} />
-            העלאת אסמכתא
+            שליחה
           </>
         )}
       </button>

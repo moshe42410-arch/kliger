@@ -28,9 +28,9 @@ import {
 } from "./db";
 import { sendEmail } from "./email";
 import { getBlobBytes } from "./blob-storage";
-import { depositTypeLabel, depositRequiresPayment, scholarshipDeliveryLabel } from "./types";
+import { depositTypeLabel, depositRequiresPayment, depositAsksForPayer, scholarshipDeliveryLabel } from "./types";
 import { deriveReminderStatusFromDocs } from "./reminder-inbox";
-import { documentationOccurrenceDate } from "./deposit-doc-reminders";
+import { occurrenceForCalendarMonth } from "./deposit-doc-reminders";
 import { isShabbatOrHoliday, isErevChag } from "./shabbat";
 import {
   mergeTemplates,
@@ -188,9 +188,25 @@ export async function buildReminderContent(
     clientActionLine,
     deliveryMethod,
     timingPhrase,
+    payerPrompt: buildPayerPrompt(client.name, deposit, association),
+    depositsLink: depositsPageUrl(),
   };
 
   return renderTemplate(template, vars);
+}
+
+function depositsPageUrl(): string {
+  const base = (process.env.APP_URL || "").replace(/\/$/, "");
+  return base ? `${base}/deposits` : "/deposits";
+}
+
+function buildPayerPrompt(
+  clientName: string,
+  deposit: Deposit,
+  association: Association | null
+): string {
+  if (!association || !depositAsksForPayer(deposit)) return "";
+  return `ההעברה מיועדת ל${association.name}. אם הכסף לא יוצא מהחשבון של ${clientName}, נא למלא בקישור את שם המעביר — בעל החשבון שממנו יצא הכסף.`;
 }
 
 function formatCurrency(n: number): string {
@@ -314,9 +330,15 @@ export async function ensureRemindersForDeposit(
 
   for (const occ of candidateOccs) {
     const scheduledPrimary = addDays(occ, -deposit.daysBeforeReminder);
-    // נפתחת רק ממועד התזכורת (למשל 5 ימים לפני יום 10)
+    // השורה מוצגת מה-1 לחודש. אם מועד המייל חל לפני כן — התזכורת נוצרת
+    // מוקדם כדי שהמייל יישלח בזמן, אבל לא מוצגת עד ה-1.
+    const monthStart = startOfDay(
+      new Date(occ.getFullYear(), occ.getMonth(), 1)
+    );
     const windowOpen =
-      options.force || startOfDay(scheduledPrimary) <= nowDay;
+      options.force ||
+      monthStart <= nowDay ||
+      startOfDay(scheduledPrimary) <= nowDay;
     if (windowOpen) {
       const r = await insertReminder(occ, scheduledPrimary, "primary");
       if (r) created.push(r);
@@ -663,7 +685,8 @@ export async function runDailyReminderSweep(): Promise<{
 }
 
 /**
- * מעבר חודש: מוחק resolved של חודשים קודמים, מסמן waiting_* כ-carried_over.
+ * מעבר חודש: שורות תיעוד נשמרות (גם אחרי בוצע/שולם).
+ * חודש קודם שעדיין לא התחיל טיפול עובר ל-carried_over במסך התזכורות.
  */
 export async function rolloverAtMonthStart(): Promise<{
   carried: number;
@@ -676,16 +699,12 @@ export async function rolloverAtMonthStart(): Promise<{
   // Note: Neon's tagged template returns the array; for rowCount we'd need
   // .query() or a full pg client. For our purposes, returning 0 is fine.
   await sql`
-    DELETE FROM reminders
-    WHERE (status = 'resolved' OR paid_at IS NOT NULL) AND month_bucket != ${currentBucket}
-  `;
-
-  await sql`
     UPDATE reminders
     SET status = 'carried_over', carried_over = 1, updated_at = ${nowIso()}
     WHERE month_bucket != ${currentBucket}
       AND status IN ('waiting_client','waiting_advisor')
       AND paid_at IS NULL
+      AND action_done_at IS NULL
   `;
 
   let created = 0;
@@ -753,7 +772,7 @@ export async function getOrCreateCurrentMonthDocReminder(
   deposit: Deposit
 ): Promise<Reminder | null> {
   const sql = getSql();
-  const occ = documentationOccurrenceDate(deposit);
+  const occ = occurrenceForCalendarMonth(deposit);
   if (!occ) return null;
   const bucket = monthBucketOf(occ);
   const targetDateIso = toIsoDate(occ);
@@ -850,54 +869,83 @@ async function resolveIfComplete(
   await syncReminderStatusFromDocs(reminderId, depositType);
 }
 
-export async function markReminderActionDone(reminderId: string): Promise<void> {
+export async function markReminderActionDone(
+  reminderId: string,
+  done = true
+): Promise<void> {
   const sql = getSql();
   const rows = await sql`SELECT * FROM reminders WHERE id = ${reminderId}`;
   const row = rows[0] as ReminderRow | undefined;
   if (!row) throw new Error("תזכורת לא נמצאה");
   const reminder = parseReminder(row);
+  if (done === !!reminder.actionDoneAt) return;
   const dRows = await sql`SELECT * FROM deposits WHERE id = ${reminder.depositId}`;
   const dRow = dRows[0] as DepositRow | undefined;
   if (!dRow) throw new Error("הפקדה לא נמצאה");
   const deposit = parseDeposit(dRow);
   const now = nowIso();
-  await sql`
-    UPDATE reminders
-    SET action_done_at = ${now}, updated_at = ${now}
-    WHERE id = ${reminderId}
-  `;
+  if (done) {
+    await sql`
+      UPDATE reminders
+      SET action_done_at = ${now}, updated_at = ${now}
+      WHERE id = ${reminderId}
+    `;
+  } else {
+    await sql`
+      UPDATE reminders
+      SET action_done_at = NULL, updated_at = ${now}
+      WHERE id = ${reminderId}
+    `;
+  }
   await logMessage({
     reminderId,
     direction: "system",
-    subject: "סומן כבוצע",
-    body: `סומן שבוצעה הפעולה (${depositTypeLabel[deposit.depositType]}).`,
-    metadata: { kind: "action_done" },
+    subject: done ? "סומן כבוצע" : "בוטל סימון בוצע",
+    body: done
+      ? `סומן שבוצעה הפעולה (${depositTypeLabel[deposit.depositType]}).`
+      : `בוטל סימון בוצע (${depositTypeLabel[deposit.depositType]}).`,
+    metadata: { kind: done ? "action_done" : "action_undone" },
   });
   await syncReminderStatusFromDocs(reminderId, deposit.depositType);
 }
 
-export async function markReminderPaid(reminderId: string): Promise<void> {
+export async function markReminderPaid(
+  reminderId: string,
+  paid = true
+): Promise<void> {
   const sql = getSql();
   const rows = await sql`SELECT * FROM reminders WHERE id = ${reminderId}`;
   const row = rows[0] as ReminderRow | undefined;
   if (!row) throw new Error("תזכורת לא נמצאה");
   const reminder = parseReminder(row);
+  const already = !!(reminder.paymentDoneAt || reminder.paidAt);
+  if (paid === already) return;
   const dRows = await sql`SELECT * FROM deposits WHERE id = ${reminder.depositId}`;
   const dRow = dRows[0] as DepositRow | undefined;
   if (!dRow) throw new Error("הפקדה לא נמצאה");
   const deposit = parseDeposit(dRow);
   const now = nowIso();
-  await sql`
-    UPDATE reminders
-    SET paid_at = ${now}, payment_done_at = ${now}, updated_at = ${now}
-    WHERE id = ${reminderId}
-  `;
+  if (paid) {
+    await sql`
+      UPDATE reminders
+      SET paid_at = ${now}, payment_done_at = ${now}, updated_at = ${now}
+      WHERE id = ${reminderId}
+    `;
+  } else {
+    await sql`
+      UPDATE reminders
+      SET paid_at = NULL, payment_done_at = NULL, updated_at = ${now}
+      WHERE id = ${reminderId}
+    `;
+  }
   await logMessage({
     reminderId,
     direction: "system",
-    subject: "סומן כשולם",
-    body: "היועץ סימן שהתשלום התקבל.",
-    metadata: { kind: "marked_paid" },
+    subject: paid ? "סומן כשולם" : "בוטל סימון שולם",
+    body: paid
+      ? "היועץ סימן שהתשלום התקבל."
+      : "היועץ ביטל את סימון התשלום.",
+    metadata: { kind: paid ? "marked_paid" : "unmarked_paid" },
   });
   await syncReminderStatusFromDocs(reminderId, deposit.depositType);
 }
@@ -1127,59 +1175,88 @@ export async function forwardReminderToAssociation(
 }
 
 /**
- * הודעה ליועץ שלקוח העלה עובר-ושב (עם קובץ מצורף במייל).
+ * מייל ליועץ על פעולה של הלקוח בקישור: קובץ, הודעה או שם מעביר.
+ * לא נשלח אם היועץ כיבה «מייל על תגובת לקוח».
+ */
+export async function notifyAdvisorOfClientUpdate(opts: {
+  reminderId: string;
+  file?: { storedRef: string; originalName: string } | null;
+  message?: string | null;
+}): Promise<void> {
+  const ctx = await loadReminderContext(opts.reminderId);
+  if (!ctx) return;
+  const ownerUser = await getUserById(ctx.reminder.ownerId);
+  if (!ownerUser || !ownerUser.notifyClientResponses) return;
+  const advisor = userAsAdvisor(ownerUser);
+
+  const targetStr = format(parseISO(ctx.reminder.targetDate), "dd/MM/yyyy");
+  const templates = mergeTemplates(ownerUser.emailTemplates);
+  const templateId = opts.file ? "advisor_file_uploaded" : "advisor_client_reply";
+  const payerName = ctx.reminder.payerName || "";
+  const clientMessage = (opts.message || "").trim();
+  const rendered = renderTemplate(templates[templateId], {
+    advisorName: advisor.name,
+    clientName: ctx.client.name,
+    depositType: depositTypeLabel[ctx.deposit.depositType],
+    targetDate: targetStr,
+    amount: `₪${formatAmount(ctx.deposit.amount)}`,
+    fileName: opts.file?.originalName || "",
+    payerName: payerName || "—",
+    clientMessage: clientMessage || "—",
+    depositsLink: depositsPageUrl(),
+    remindersLink: depositsPageUrl(),
+    companyName: ownerUser.companyName || ownerUser.name || "KLIGER",
+  });
+  let body = rendered.body;
+  if (payerName && !body.includes(payerName)) {
+    body += `\n\nשם המעביר: ${payerName}`;
+  }
+  if (clientMessage && clientMessage !== "—" && !body.includes(clientMessage)) {
+    body += `\n\nהודעת הלקוח:\n${clientMessage}`;
+  }
+
+  let attachments: { filename: string; content: Buffer }[] | undefined;
+  if (opts.file) {
+    const buf = await getBlobBytes(opts.file.storedRef);
+    if (buf) {
+      attachments = [{ filename: opts.file.originalName, content: buf }];
+    }
+  }
+
+  const res = await sendEmail({
+    to: [advisor.email],
+    subject: rendered.subject,
+    body,
+    attachments,
+    reminderId: opts.reminderId,
+    clientId: ctx.client.id,
+    fromUserId: ownerUser.id,
+  });
+
+  await logMessage({
+    reminderId: opts.reminderId,
+    direction: "system",
+    subject: rendered.subject,
+    body,
+    emailStatus: res.ok ? "sent" : "error",
+    emailError: res.error ?? null,
+    metadata: {
+      kind: opts.file ? "notify_advisor_upload" : "notify_advisor_client_reply",
+    },
+  });
+}
+
+/**
+ * הודעה ליועץ שלקוח העלה קובץ (עם הקובץ מצורף).
  */
 export async function notifyAdvisorFileUploaded(
   reminderId: string,
   uploadedFilename: string,
   originalName: string
 ): Promise<void> {
-  const ctx = await loadReminderContext(reminderId);
-  if (!ctx) return;
-  const ownerUser = await getUserById(ctx.reminder.ownerId);
-  if (!ownerUser) return;
-  const advisor = userAsAdvisor(ownerUser);
-
-  const targetStr = format(parseISO(ctx.reminder.targetDate), "dd/MM/yyyy");
-  const baseUrl = process.env.APP_URL || "";
-  const reminderLink = baseUrl ? `${baseUrl}/reminders` : "/reminders";
-  const templates = mergeTemplates(ownerUser.emailTemplates);
-  const rendered = renderTemplate(templates.advisor_file_uploaded, {
-    advisorName: advisor.name,
-    clientName: ctx.client.name,
-    depositType: depositTypeLabel[ctx.deposit.depositType],
-    targetDate: targetStr,
-    amount: `₪${formatAmount(ctx.deposit.amount)}`,
-    fileName: originalName,
-    remindersLink: reminderLink,
-    companyName: ownerUser.companyName || ownerUser.name || "KLIGER",
-  });
-  const subject = rendered.subject;
-  const body = rendered.body;
-
-  const buf = await getBlobBytes(uploadedFilename);
-  const attachments = buf
-    ? [{ filename: originalName, content: buf }]
-    : undefined;
-
-  const res = await sendEmail({
-    to: [advisor.email],
-    subject,
-    body,
-    attachments,
+  await notifyAdvisorOfClientUpdate({
     reminderId,
-    clientId: ctx.client.id,
-    fromUserId: ownerUser.id,
-  });
-
-  await logMessage({
-    reminderId,
-    direction: "system",
-    subject,
-    body,
-    emailStatus: res.ok ? "sent" : "error",
-    emailError: res.error ?? null,
-    metadata: { kind: "notify_advisor_upload" },
+    file: { storedRef: uploadedFilename, originalName },
   });
 }
 
@@ -1189,17 +1266,18 @@ export async function notifyAdvisorSnoozeDue(reminderId: string): Promise<void> 
   const ownerUser = await getUserById(ctx.reminder.ownerId);
   if (!ownerUser) return;
   const advisor = userAsAdvisor(ownerUser);
-
-  const subject = `⏰ תזכורת חזרה לטיפול - ${ctx.client.name}`;
-  const body = [
-    `שלום ${advisor.name},`,
-    "",
-    `תזכורת עבור הלקוח ${ctx.client.name} חזרה לטיפול (הסתיים זמן ההמתנה).`,
-    `סוג הפקדה: ${depositTypeLabel[ctx.deposit.depositType]}`,
-    `סכום: ₪${formatAmount(ctx.deposit.amount)}`,
-    "",
-    `סטטוס חדש: ממתין לטיפול יועץ.`,
-  ].join("\n");
+  const templates = mergeTemplates(ownerUser.emailTemplates);
+  const rendered = renderTemplate(templates.advisor_snooze_due, {
+    advisorName: advisor.name,
+    clientName: ctx.client.name,
+    depositType: depositTypeLabel[ctx.deposit.depositType],
+    amount: `₪${formatAmount(ctx.deposit.amount)}`,
+    targetDate: format(parseISO(ctx.reminder.targetDate), "dd/MM/yyyy"),
+    depositsLink: depositsPageUrl(),
+    companyName: ownerUser.companyName || ownerUser.name || "KLIGER",
+  });
+  const subject = rendered.subject;
+  const body = rendered.body;
 
   const res = await sendEmail({
     to: [advisor.email],

@@ -5,12 +5,19 @@ import { assertReminderOwnership, AuthError } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     await assertReminderOwnership(params.id);
-    await markReminderActionDone(params.id);
+    let done = true;
+    try {
+      const body = await req.json();
+      if (typeof body?.on === "boolean") done = body.on;
+    } catch {
+      // גוף ריק = סימון כבוצע
+    }
+    await markReminderActionDone(params.id, done);
     const reminder = await getReminderById(params.id);
     return NextResponse.json({ ok: true, reminder });
   } catch (err) {

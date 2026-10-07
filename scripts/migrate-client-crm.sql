@@ -25,3 +25,5 @@ ALTER TABLE deposits ADD COLUMN IF NOT EXISTS scholarship_delivery TEXT;
 -- reminders: dual tracking
 ALTER TABLE reminders ADD COLUMN IF NOT EXISTS action_done_at TEXT;
 ALTER TABLE reminders ADD COLUMN IF NOT EXISTS payment_done_at TEXT;
+ALTER TABLE reminders ADD COLUMN IF NOT EXISTS payer_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_client_responses INTEGER NOT NULL DEFAULT 1;

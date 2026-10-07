@@ -86,6 +86,7 @@ async function sendViaGmailApi(opts: {
   html: string;
   text: string;
   attachments?: EmailAttachment[];
+  replyTo?: string | null;
 }): Promise<void> {
   const boundary = `kliger_${uuid().replace(/-/g, "")}`;
   const hasAttachments = Boolean(opts.attachments?.length);
@@ -98,6 +99,9 @@ async function sendViaGmailApi(opts: {
     `Subject: ${encodeSubject(opts.subject)}`,
     "MIME-Version: 1.0",
   ];
+  if (opts.replyTo && opts.replyTo.includes("@")) {
+    headers.push(`Reply-To: ${opts.replyTo}`);
+  }
 
   let rawBody: string;
   if (!hasAttachments) {
@@ -197,6 +201,8 @@ export interface SendEmailOptions {
   fromEmailOverride?: string | null;
   /** false = מייל פשוט בלי לוגו/מעטפת ממותגת */
   includeLogo?: boolean;
+  /** כתובת שאליה מגיעה תשובה של הנמען. ברירת מחדל: כתובת השולח. */
+  replyTo?: string | null;
 }
 
 export async function sendEmail(opts: SendEmailOptions): Promise<{
@@ -265,6 +271,7 @@ export async function sendEmail(opts: SendEmailOptions): Promise<{
           html,
           text,
           attachments: opts.attachments,
+          replyTo: opts.replyTo || fromEmail,
         });
         await sql`
           INSERT INTO email_log (id, owner_id, reminder_id, client_id, to_addresses, subject, body, status)
@@ -280,6 +287,7 @@ export async function sendEmail(opts: SendEmailOptions): Promise<{
       const fromEmail = opts.fromEmailOverride || smtp.fromEmail;
       await smtp.transporter.sendMail({
         from: `"${fromName}" <${fromEmail}>`,
+        replyTo: opts.replyTo || user?.email || fromEmail,
         to: validRecipients.join(", "),
         subject: opts.subject,
         html,

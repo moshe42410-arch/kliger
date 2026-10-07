@@ -1,11 +1,13 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { getCurrentUser } from "@/lib/auth";
+import { ensureSchemaExtras } from "@/lib/db";
 import { SettingsPanel } from "@/components/SettingsPanel";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
+  await ensureSchemaExtras();
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   return (

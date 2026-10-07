@@ -146,8 +146,8 @@ export function EmailTemplatesEditor() {
           <Mail size={22} className="text-teal-600" /> ניסוח כל המיילים
         </h2>
         <p className="text-navy-700 text-sm leading-relaxed">
-          כאן מנוסחים כל המיילים שנשלחים מהמערכת — מסמכים, תזכורות והתראות.
-          השתמשו במשתנים כמו{" "}
+          הטקסט שנשמר כאן הוא בדיוק מה שנשלח. אפשר לנסח כל מייל ולשמור אותו
+          כברירת מחדל. השתמשו במשתנים כמו{" "}
           <code
             className="bg-cream-100 px-1.5 py-0.5 rounded font-mono text-xs"
             dir="ltr"

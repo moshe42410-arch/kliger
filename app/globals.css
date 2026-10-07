@@ -704,6 +704,9 @@ a:focus-visible {
 .toggle.on::after {
   transform: translateX(-20px);
 }
+.toggle.gold.on {
+  background: linear-gradient(135deg, #e2be4a, #c0891a);
+}
 
 /* ───────────── Top bar ───────────── */
 .topbar {

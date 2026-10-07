@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
   gmail_token_expiry TEXT,
   gmail_connected_at TEXT,
   email_templates TEXT,
+  notify_client_responses INTEGER NOT NULL DEFAULT 1,
   auto_reminders_enabled INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS')),
   updated_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS'))
@@ -126,6 +127,7 @@ CREATE TABLE IF NOT EXISTS reminders (
   client_remind_at TEXT,
   month_bucket TEXT NOT NULL,
   carried_over INTEGER NOT NULL DEFAULT 0,
+  payer_name TEXT,
   created_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS')),
   updated_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS'))
 );

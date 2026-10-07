@@ -17,7 +17,9 @@ export type TemplateId =
   | "client_primary_advisor_flow"
   | "association_transfer"
   | "waiting_digest"
-  | "advisor_file_uploaded";
+  | "advisor_file_uploaded"
+  | "advisor_client_reply"
+  | "advisor_snooze_due";
 
 export interface Template {
   subject: string;
@@ -115,6 +117,26 @@ export const TEMPLATE_VARIABLES: TemplateVar[] = [
     label: "טלפון הלקוח",
     example: "050-0000000",
   },
+  {
+    key: "payerPrompt",
+    label: "בקשה לשם מעביר (רק כשיש עמותה)",
+    example: "נא למלא בקישור את שם המעביר…",
+  },
+  {
+    key: "payerName",
+    label: "שם המעביר",
+    example: "אברהם כהן",
+  },
+  {
+    key: "clientMessage",
+    label: "הודעת הלקוח",
+    example: "העברתי היום מהחשבון של אבא",
+  },
+  {
+    key: "depositsLink",
+    label: "קישור למסך הפקדות",
+    example: "https://kliger.vercel.app/deposits",
+  },
 ];
 
 const V = (...keys: string[]) => keys;
@@ -154,9 +176,13 @@ export const TEMPLATE_META: TemplateMeta[] = [
       "accountBlock",
       "uploadUrl",
       "companyName",
+      "advisorName",
+      "advisorPhone",
+      "payerPrompt",
       "amount",
       "depositType",
-      "targetDate"
+      "targetDate",
+      "associationName"
     ),
   },
   {
@@ -171,9 +197,13 @@ export const TEMPLATE_META: TemplateMeta[] = [
       "accountBlock",
       "uploadUrl",
       "companyName",
+      "advisorName",
+      "advisorPhone",
+      "payerPrompt",
       "amount",
       "depositType",
-      "targetDate"
+      "targetDate",
+      "associationName"
     ),
   },
   {
@@ -188,8 +218,13 @@ export const TEMPLATE_META: TemplateMeta[] = [
       "accountBlock",
       "uploadUrl",
       "companyName",
+      "advisorName",
+      "advisorPhone",
+      "payerPrompt",
       "amount",
-      "depositType"
+      "depositType",
+      "targetDate",
+      "associationName"
     ),
   },
   {
@@ -279,7 +314,45 @@ export const TEMPLATE_META: TemplateMeta[] = [
       "amount",
       "targetDate",
       "fileName",
+      "payerName",
+      "clientMessage",
+      "depositsLink",
       "remindersLink",
+      "companyName"
+    ),
+  },
+  {
+    id: "advisor_client_reply",
+    label: "התראה — תגובת לקוח",
+    description:
+      "נשלח אליך כשלקוח שולח הודעה או ממלא שם מעביר בקישור",
+    category: "ops",
+    audience: "advisor",
+    variableKeys: V(
+      "advisorName",
+      "clientName",
+      "depositType",
+      "amount",
+      "targetDate",
+      "payerName",
+      "clientMessage",
+      "depositsLink",
+      "companyName"
+    ),
+  },
+  {
+    id: "advisor_snooze_due",
+    label: "התראה — תזכורת חזרה לטיפול",
+    description: "נשלח אליך כשנגמר זמן ההמתנה שקבעת",
+    category: "ops",
+    audience: "advisor",
+    variableKeys: V(
+      "advisorName",
+      "clientName",
+      "depositType",
+      "amount",
+      "targetDate",
+      "depositsLink",
       "companyName"
     ),
   },
@@ -305,39 +378,63 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
     subject: "תזכורת: {depositType} — {amount}",
     body: `לכבוד {clientName},
 
-{clientActionLine}.{accountBlock}
+שלום,
+נא להסדיר {depositType} בסך {amount} עד {targetDate}.
+{accountBlock}
 
-קישור להעלאת אסמכתא:
+{payerPrompt}
+
+בקישור אפשר להעלות אסמכתא (PDF, תמונה או כל קובץ אחר) ולשלוח הודעה:
 {uploadUrl}
 
+אפשר גם להשיב ישירות למייל הזה.
+
 בברכה,
-{companyName}`,
+{companyName}
+{advisorName}
+{advisorPhone}`,
   },
 
   client_primary_advisor_flow: {
     subject: "תזכורת: {depositType} — {amount}",
     body: `לכבוד {clientName},
 
-{clientActionLine}.{accountBlock}
+שלום,
+לידיעתך, בתאריך {targetDate} יש יעד עבור {depositType} בסך {amount}.
+{accountBlock}
 
-קישור להעלאת אסמכתא:
+{payerPrompt}
+
+בקישור אפשר להעלות אסמכתא ולשלוח הודעה:
 {uploadUrl}
 
+אפשר גם להשיב ישירות למייל הזה.
+
 בברכה,
-{companyName}`,
+{companyName}
+{advisorName}
+{advisorPhone}`,
   },
 
   client_verify: {
     subject: "תזכורת דחופה: {depositType} — {amount}",
     body: `לכבוד {clientName},
 
-{clientActionLine}.{accountBlock}
+שלום,
+טרם סומן שהוסדר {depositType} בסך {amount} (יעד {targetDate}).
+{accountBlock}
 
-נא להסדיר בהקדם. אם כבר בוצע — נא להעלות אסמכתא כאן:
+{payerPrompt}
+
+נא להעלות אסמכתא או לעדכן בקישור:
 {uploadUrl}
 
+אפשר גם להשיב ישירות למייל הזה.
+
 בברכה,
-{companyName}`,
+{companyName}
+{advisorName}
+{advisorPhone}`,
   },
 
   advisor_primary_advisor_flow: {
@@ -405,8 +502,148 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
   },
 
   advisor_file_uploaded: {
-    subject: "עובר-ושב מהלקוח {clientName}",
+    subject: "אסמכתא מהלקוח {clientName}",
     body: `לכבוד {advisorName},
+
+הלקוח {clientName} העלה קובץ עבור {depositType} בסך {amount}.
+תאריך יעד: {targetDate}
+שם הקובץ: {fileName}
+שם המעביר: {payerName}
+
+הודעת הלקוח:
+{clientMessage}
+
+הקובץ מצורף למייל זה.
+למסך ההפקדות: {depositsLink}
+
+בברכה,
+מערכת KLIGER`,
+  },
+
+  advisor_client_reply: {
+    subject: "תגובה מהלקוח {clientName}",
+    body: `לכבוד {advisorName},
+
+התקבלה תגובה מהלקוח {clientName} עבור {depositType} בסך {amount}.
+תאריך יעד: {targetDate}
+שם המעביר: {payerName}
+
+הודעת הלקוח:
+{clientMessage}
+
+למסך ההפקדות: {depositsLink}
+
+בברכה,
+מערכת KLIGER`,
+  },
+
+  advisor_snooze_due: {
+    subject: "תזכורת חזרה לטיפול — {clientName}",
+    body: `לכבוד {advisorName},
+
+תזכורת עבור {clientName} חזרה לטיפול.
+סוג: {depositType}
+סכום: {amount}
+תאריך יעד: {targetDate}
+
+למסך ההפקדות: {depositsLink}
+
+בברכה,
+מערכת KLIGER`,
+  },
+};
+
+/**
+ * מיזוג תבניות של משתמש עם ברירות המחדל.
+ */
+/** נוסחים ישנים שנשמרו כמו שהיו מהמערכת — מוחלפים בברירת המחדל החדשה. */
+const LEGACY_TEMPLATES: Partial<Record<TemplateId, Template[]>> = {
+  client_primary: [
+    {
+      subject: "תזכורת: {depositType} — {amount}",
+      body: `לכבוד {clientName},
+
+{clientActionLine}.{accountBlock}
+
+קישור להעלאת אסמכתא:
+{uploadUrl}
+
+בברכה,
+{companyName}`,
+    },
+    {
+      subject: "תזכורת: {depositType} — {amount}",
+      body: `לכבוד {clientName},
+
+שלום,
+נא להסדיר {depositType} בסך {amount} עד {targetDate}.
+{accountBlock}
+
+{payerPrompt}
+
+בקישור אפשר להעלות אסמכתא (PDF, תמונה או כל קובץ אחר), למלא שם מעביר ולשלוח הודעה:
+{uploadUrl}
+
+אפשר גם להשיב ישירות למייל הזה.
+
+בברכה,
+{companyName}
+{advisorName}
+{advisorPhone}`,
+    },
+  ],
+  client_primary_advisor_flow: [
+    {
+      subject: "תזכורת: {depositType} — {amount}",
+      body: `לכבוד {clientName},
+
+{clientActionLine}.{accountBlock}
+
+קישור להעלאת אסמכתא:
+{uploadUrl}
+
+בברכה,
+{companyName}`,
+    },
+    {
+      subject: "תזכורת: {depositType} — {amount}",
+      body: `לכבוד {clientName},
+
+שלום,
+לידיעתך, בתאריך {targetDate} יש יעד עבור {depositType} בסך {amount}.
+{accountBlock}
+
+{payerPrompt}
+
+בקישור אפשר להעלות אסמכתא, למלא שם מעביר ולשלוח הודעה:
+{uploadUrl}
+
+אפשר גם להשיב ישירות למייל הזה.
+
+בברכה,
+{companyName}
+{advisorName}
+{advisorPhone}`,
+    },
+  ],
+  client_verify: [
+    {
+      subject: "תזכורת דחופה: {depositType} — {amount}",
+      body: `לכבוד {clientName},
+
+{clientActionLine}.{accountBlock}
+
+נא להסדיר בהקדם. אם כבר בוצע — נא להעלות אסמכתא כאן:
+{uploadUrl}
+
+בברכה,
+{companyName}`,
+    },
+  ],
+  advisor_file_uploaded: [
+    {
+      subject: "עובר-ושב מהלקוח {clientName}",
+      body: `לכבוד {advisorName},
 
 הלקוח {clientName} העלה קובץ עבור {depositType}.
 תאריך יעד: {targetDate}
@@ -417,12 +654,14 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
 
 בברכה,
 מערכת KLIGER`,
-  },
+    },
+  ],
 };
 
-/**
- * מיזוג תבניות של משתמש עם ברירות המחדל.
- */
+function sameTemplate(a: Template, b: Template): boolean {
+  return a.subject.trim() === b.subject.trim() && a.body.trim() === b.body.trim();
+}
+
 export function mergeTemplates(
   userTemplates: Record<string, { subject: string; body: string }> | null
 ): Record<TemplateId, Template> {
@@ -435,6 +674,8 @@ export function mergeTemplates(
       typeof override.subject === "string" &&
       typeof override.body === "string"
     ) {
+      const legacy = LEGACY_TEMPLATES[meta.id];
+      if (legacy?.some((item) => sameTemplate(override, item))) continue;
       result[meta.id] = {
         subject: override.subject,
         body: override.body,

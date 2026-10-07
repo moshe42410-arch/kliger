@@ -1,13 +1,11 @@
 /**
- * Choose which monthly primary reminder is "תיעוד החודש" for a deposit.
- * After the deposit day has passed, that month stays the active doc month
- * until it is fully archived — we must not drop it on refresh.
+ * שורות תיעוד חודשיות לטאב הפקדות.
+ * כל חודש הוא שורה נפרדת, מה-1 לחודש, גם אם החודש הקודם עוד פתוח.
  *
  * Client-safe: no Node/DB runtime imports (used from DepositsTab).
  */
 import { parseISO, startOfDay } from "date-fns";
 import type { Deposit, Reminder } from "./db";
-import { isDepositDocComplete } from "./deposit-doc-buckets";
 
 function monthBucketOf(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
@@ -25,8 +23,11 @@ function occInMonth(dayOfMonth: number, year: number, monthIndex: number): Date 
   return startOfDay(new Date(year, monthIndex, Math.min(dayOfMonth, dim)));
 }
 
-/** Latest deposit occurrence on/before today, else the next upcoming one. */
-export function documentationOccurrenceDate(
+/**
+ * יום ההפקדה בתוך החודש הקלנדרי הנוכחי.
+ * השורה נפתחת מה-1 לחודש, גם אם יום ההפקדה עצמו עוד לא הגיע.
+ */
+export function occurrenceForCalendarMonth(
   deposit: Deposit,
   now: Date = new Date()
 ): Date | null {
@@ -34,125 +35,30 @@ export function documentationOccurrenceDate(
     deposit.startDate ? parseISO(deposit.startDate) : now
   );
   const endDay = deposit.endDate ? startOfDay(parseISO(deposit.endDate)) : null;
-  const nowDay = startOfDay(now);
-
-  let bestPast: Date | null = null;
-  let bestFuture: Date | null = null;
-
-  for (let i = -3; i <= 3; i++) {
-    const m = now.getMonth() + i;
-    const y = now.getFullYear() + Math.floor(m / 12);
-    const monthIndex = ((m % 12) + 12) % 12;
-    const occ = occInMonth(deposit.dayOfMonth, y, monthIndex);
-    if (occ < startDay) continue;
-    if (endDay && occ > endDay) continue;
-    if (occ.getTime() <= nowDay.getTime()) bestPast = occ;
-    else if (!bestFuture) bestFuture = occ;
-  }
-
-  return bestPast ?? bestFuture;
-}
-
-export function documentationMonthBucket(
-  deposit: Deposit,
-  now: Date = new Date()
-): string | null {
-  const occ = documentationOccurrenceDate(deposit, now);
-  return occ ? monthBucketOf(occ) : null;
-}
-
-function shiftBucket(bucket: string, deltaMonths: number): string {
-  const [ys, ms] = bucket.split("-");
-  const y0 = Number(ys);
-  const m0 = Number(ms);
-  if (!Number.isFinite(y0) || !Number.isFinite(m0)) return bucket;
-  const idx = y0 * 12 + (m0 - 1) + deltaMonths;
-  const y = Math.floor(idx / 12);
-  const m = (idx % 12) + 1;
-  return `${y}-${m.toString().padStart(2, "0")}`;
-}
-
-export function nearbyMonthBuckets(now: Date = new Date()): {
-  prev: string;
-  current: string;
-  next: string;
-} {
-  const current = monthBucketOf(now);
-  return {
-    prev: shiftBucket(current, -1),
-    current,
-    next: shiftBucket(current, 1),
-  };
-}
-
-function progressScore(r: Reminder): number {
-  return (
-    (r.actionDoneAt ? 2 : 0) + (r.paymentDoneAt || r.paidAt ? 2 : 0)
-  );
+  const occ = occInMonth(deposit.dayOfMonth, now.getFullYear(), now.getMonth());
+  if (occ < startDay) return null;
+  if (endDay && occ > endDay) return null;
+  return occ;
 }
 
 /**
- * Among primary reminders for one deposit, pick the one that should drive
- * the deposits tabs / dashboard counts.
+ * שורת תיעוד אחת לכל חודש בטאב הפקדות.
+ * חודש נוכחי תמיד מוצג (מה-1), גם אם חודש קודם עדיין פתוח.
+ * חודשים עתידיים נשארים מוסתרים עד ה-1 שלהם.
  */
-export function pickOpenDocReminder(
+export function listMonthDocReminders(
   candidates: Reminder[],
-  deposit: Deposit,
   now: Date = new Date()
-): Reminder | undefined {
-  if (candidates.length === 0) return undefined;
-  const docBucket = documentationMonthBucket(deposit, now);
-  const { prev, current, next } = nearbyMonthBuckets(now);
-
-  const ranked = [...candidates].sort((a, b) => {
-    const bucketRank = (r: Reminder) => {
-      if (docBucket && r.monthBucket === docBucket) return 0;
-      if (r.monthBucket === current) return 1;
-      if (r.monthBucket === prev) return 2;
-      if (r.monthBucket === next) return 3;
-      return 4;
-    };
-    const br = bucketRank(a) - bucketRank(b);
-    if (br !== 0) return br;
-
-    const aComplete = isDepositDocComplete(deposit.depositType, a);
-    const bComplete = isDepositDocComplete(deposit.depositType, b);
-    // Prefer an in-progress / pending cycle over a fully archived one
-    if (aComplete !== bComplete) return aComplete ? 1 : -1;
-
-    const ps = progressScore(b) - progressScore(a);
-    if (ps !== 0) return ps;
-
-    return (
-      new Date(b.targetDate).getTime() - new Date(a.targetDate).getTime()
-    );
-  });
-
-  return ranked[0];
-}
-
-/** Merge client + server maps without losing a freshly marked בוצע/שולם. */
-export function mergeOpenDocMaps(
-  prev: Record<string, Reminder>,
-  incoming: Record<string, Reminder>
-): Record<string, Reminder> {
-  const out: Record<string, Reminder> = { ...incoming };
-  for (const [depositId, p] of Object.entries(prev)) {
-    const i = out[depositId];
-    if (!i) {
-      if (progressScore(p) > 0) out[depositId] = p;
-      continue;
-    }
-    if (i.id === p.id) {
-      out[depositId] = {
-        ...i,
-        actionDoneAt: i.actionDoneAt || p.actionDoneAt,
-        paymentDoneAt: i.paymentDoneAt || p.paymentDoneAt,
-        paidAt: i.paidAt || p.paidAt,
-      };
-      continue;
-    }
-    if (progressScore(p) > progressScore(i)) out[depositId] = p;
+): Reminder[] {
+  const current = monthBucketOf(now);
+  const best = new Map<string, Reminder>();
+  for (const r of candidates) {
+    if (r.phase !== "primary") continue;
+    if (!r.monthBucket || r.monthBucket > current) continue;
+    const prev = best.get(r.monthBucket);
+    if (!prev || r.targetDate > prev.targetDate) best.set(r.monthBucket, r);
   }
-  return out;
+  return [...best.values()].sort((a, b) =>
+    a.targetDate < b.targetDate ? 1 : a.targetDate > b.targetDate ? -1 : 0
+  );
 }

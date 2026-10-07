@@ -24,10 +24,14 @@ export async function POST(
     }
 
     let to: "advisor" | "client" | "both" = "advisor";
+    let reminderId: string | null = null;
     try {
       const body = await req.json();
       if (body?.to === "client" || body?.to === "both" || body?.to === "advisor") {
         to = body.to;
+      }
+      if (typeof body?.reminderId === "string" && body.reminderId) {
+        reminderId = body.reminderId;
       }
     } catch {
       // no body
@@ -40,6 +44,30 @@ export async function POST(
     const row = (rows as DepositRow[])[0];
     if (!row) return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
     const deposit = parseDeposit(row);
+
+    if (reminderId) {
+      const targetRows = await sql`
+        SELECT * FROM reminders
+        WHERE id = ${reminderId}
+          AND deposit_id = ${params.id}
+          AND owner_id = ${ownerId}
+      `;
+      const target = (targetRows as ReminderRow[])[0];
+      if (!target) {
+        return NextResponse.json({ error: "תזכורת לא נמצאה" }, { status: 404 });
+      }
+      const res = await sendReminderNow(reminderId, { audience: to });
+      if (!res.ok) {
+        const msg = res.error || "שליחה נכשלה";
+        const needsGmail =
+          msg.includes("גוגל") || msg.includes("Gmail") || msg.includes("SMTP");
+        return NextResponse.json(
+          { error: msg },
+          { status: needsGmail ? 400 : 500 }
+        );
+      }
+      return NextResponse.json({ ok: true, sent: 1, reminderId });
+    }
 
     await ensureRemindersForDeposit(deposit, { force: true });
 

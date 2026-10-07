@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
@@ -15,6 +15,8 @@ import {
   Building2,
   Edit3,
   ShieldCheck,
+  Search,
+  Download,
 } from "lucide-react";
 import type {
   Association,
@@ -35,9 +37,10 @@ import {
   defaultResponsibilityFor,
   scholarshipDeliveryLabel,
   depositRequiresPayment,
+  depositAsksForPayer,
 } from "@/lib/types";
 import { depositDocBucket } from "@/lib/deposit-doc-buckets";
-import { mergeOpenDocMaps } from "@/lib/deposit-doc-reminders";
+import { listMonthDocReminders } from "@/lib/deposit-doc-reminders";
 
 interface FormState {
   id?: string;
@@ -82,23 +85,201 @@ const emptyForm: FormState = {
 const DAY_TEMPLATES = [5, 10, 15, 20, 25];
 const DAYS_BEFORE_TEMPLATES = [3, 5, 7, 10];
 
+function currentMonthBucket(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}`;
+}
+
+function formatMonthBucket(bucket: string): string {
+  const [ys, ms] = bucket.split("-");
+  const y = Number(ys);
+  const m = Number(ms);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return bucket;
+  return new Date(y, m - 1, 1).toLocaleDateString("he-IL", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function StatusSwitch({
+  label,
+  on,
+  tone,
+  onClick,
+}: {
+  label: string;
+  on: boolean;
+  tone: "teal" | "gold";
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      className={`flex items-center gap-3 rounded-2xl border px-3.5 py-2.5 transition-all text-right min-w-[9.5rem] ${
+        on
+          ? tone === "gold"
+            ? "border-gold-400/80 bg-gold-50 shadow-sm"
+            : "border-teal-500/40 bg-teal-50 shadow-sm"
+          : "border-navy-950/10 bg-white hover:border-navy-950/20"
+      }`}
+    >
+      <span
+        className={`toggle pointer-events-none ${on ? "on" : ""} ${
+          tone === "gold" && on ? "gold" : ""
+        }`}
+        aria-hidden
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-bold text-navy-950 leading-tight">
+          {label}
+        </span>
+        <span className="block text-[11px] text-navy-500 mt-0.5">
+          {on ? "סומן" : "לא סומן"}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function PayerNameField({
+  depositId,
+  reminderId,
+  value,
+  onSaved,
+}: {
+  depositId: string;
+  reminderId?: string;
+  value: string;
+  onSaved: (reminder: Reminder) => void;
+}) {
+  const saved = (value || "").trim();
+  const [text, setText] = useState(saved);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(!saved);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const focusOnEdit = useRef(false);
+
+  useEffect(() => {
+    setText(value || "");
+    setEditing(!(value || "").trim());
+  }, [value, reminderId]);
+
+  useEffect(() => {
+    if (editing && focusOnEdit.current) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+      focusOnEdit.current = false;
+    }
+  }, [editing]);
+
+  async function save() {
+    const next = text.trim();
+    if (next === saved) {
+      setEditing(!next);
+      return;
+    }
+    setSaving(true);
+    try {
+      let id = reminderId;
+      if (!id) {
+        const opened = await fetch(`/api/deposits/${depositId}/ensure-doc`, {
+          method: "POST",
+        });
+        const openedJson = await opened.json().catch(() => ({}));
+        if (!opened.ok || !openedJson.reminder) return;
+        id = openedJson.reminder.id as string;
+        onSaved(openedJson.reminder as Reminder);
+      }
+      const res = await fetch(`/api/reminders/${id}/payer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payerName: next }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok && j.reminder) {
+        onSaved(j.reminder as Reminder);
+        setEditing(!next);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (saved && !editing) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span className="case-meta" title="שם המעביר">
+          <User size={12} /> מעביר: {saved}
+        </span>
+        <button
+          type="button"
+          className="text-xs font-semibold text-navy-600 hover:text-navy-950"
+          onClick={() => {
+            focusOnEdit.current = true;
+            setText(saved);
+            setEditing(true);
+          }}
+        >
+          תיקון
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <label className="block basis-full max-w-md">
+      <span className="text-xs font-bold text-navy-600">שם המעביר</span>
+      <input
+        ref={inputRef}
+        className="input mt-1"
+        value={text}
+        placeholder="מי העביר את הכסף בחודש הזה"
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => void save()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            (e.currentTarget as HTMLInputElement).blur();
+          }
+          if (e.key === "Escape" && saved) {
+            e.preventDefault();
+            setText(saved);
+            setEditing(false);
+          }
+        }}
+      />
+      <span className="block text-[11px] text-navy-500 mt-1">
+        {saving
+          ? "שומר..."
+          : "נשמר על החודש הזה בלבד. בחודש הבא השדה מתחיל ריק."}
+      </span>
+    </label>
+  );
+}
+
 export function DepositsTab({
   initialDeposits,
   clients,
   associations,
   reminderMeta,
-  openReminders = {},
+  monthReminders = [],
 }: {
   initialDeposits: Deposit[];
   clients: Client[];
   associations: Association[];
   reminderMeta: Record<string, { sends: number; lastSent: string | null }>;
-  openReminders?: Record<string, Reminder>;
+  monthReminders?: Reminder[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [deposits, setDeposits] = useState<Deposit[]>(initialDeposits);
-  const [docs, setDocs] = useState<Record<string, Reminder>>(openReminders);
+  const [docs, setDocs] = useState<Record<string, Reminder>>(() =>
+    Object.fromEntries(monthReminders.map((r) => [r.id, r]))
+  );
+  const [nameQuery, setNameQuery] = useState("");
+  const [exportAssociationId, setExportAssociationId] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -148,8 +329,16 @@ export function DepositsTab({
   }, [toast]);
 
   useEffect(() => {
-    setDocs((prev) => mergeOpenDocMaps(prev, openReminders));
-  }, [openReminders]);
+    setDocs((prev) => {
+      const next = { ...prev };
+      const incomingIds = new Set(monthReminders.map((r) => r.id));
+      for (const id of Object.keys(next)) {
+        if (!incomingIds.has(id)) delete next[id];
+      }
+      for (const r of monthReminders) next[r.id] = r;
+      return next;
+    });
+  }, [monthReminders]);
 
   useEffect(() => {
     setDeposits(initialDeposits);
@@ -282,11 +471,15 @@ export function DepositsTab({
     }
   }
 
-  async function sendNow(d: Deposit, to: "advisor" | "client" = "advisor") {
+  async function sendNow(
+    d: Deposit,
+    to: "advisor" | "client" = "advisor",
+    reminderId?: string
+  ) {
     const res = await fetch(`/api/deposits/${d.id}/send-now`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to }),
+      body: JSON.stringify({ to, reminderId }),
     });
     if (res.ok) {
       const j = await res.json().catch(() => ({}));
@@ -304,7 +497,10 @@ export function DepositsTab({
   }
 
   async function ensureDocReminder(depositId: string): Promise<Reminder | null> {
-    const existing = docs[depositId];
+    const bucket = currentMonthBucket();
+    const existing = Object.values(docs).find(
+      (r) => r.depositId === depositId && r.monthBucket === bucket
+    );
     if (existing) return existing;
     const res = await fetch(`/api/deposits/${depositId}/ensure-doc`, {
       method: "POST",
@@ -316,77 +512,50 @@ export function DepositsTab({
     }
     const j = await res.json();
     const rem = j.reminder as Reminder;
-    setDocs((prev) => ({ ...prev, [depositId]: rem }));
+    setDocs((prev) => ({ ...prev, [rem.id]: rem }));
     return rem;
   }
 
-  async function markDocAction(depositId: string, reminderId?: string) {
-    let rem: Reminder | null | undefined =
-      (reminderId && docs[depositId]?.id === reminderId
-        ? docs[depositId]
-        : null) || docs[depositId];
-    if (!rem) {
-      rem = await ensureDocReminder(depositId);
-    }
+  async function setDocFlag(
+    depositId: string,
+    reminderId: string | undefined,
+    field: "action" | "paid",
+    on: boolean
+  ) {
+    const found = reminderId ? docs[reminderId] : undefined;
+    const rem = found ?? (await ensureDocReminder(depositId));
     if (!rem) return;
-    const rid = rem.id;
     const now = new Date().toISOString();
-    const dep = deposits.find((d) => d.id === depositId);
-    const next = { ...rem, actionDoneAt: now };
-    if (dep) {
-      setDocs((prev) => ({ ...prev, [depositId]: next }));
-      setDocTab(docBucket(dep, next));
-    }
-    const res = await fetch(`/api/reminders/${rid}/action-done`, {
+    const optimistic: Reminder =
+      field === "action"
+        ? { ...rem, actionDoneAt: on ? now : null }
+        : { ...rem, paymentDoneAt: on ? now : null, paidAt: on ? now : null };
+    setDocs((prev) => ({ ...prev, [rem.id]: optimistic }));
+    const path = field === "action" ? "action-done" : "mark-paid";
+    const res = await fetch(`/api/reminders/${rem.id}/${path}`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ on }),
     });
     if (res.ok) {
       const j = await res.json().catch(() => ({}));
-      if (j.reminder && dep) {
-        setDocs((prev) => ({ ...prev, [depositId]: j.reminder }));
-        setDocTab(docBucket(dep, j.reminder));
+      if (j.reminder) {
+        setDocs((prev) => ({ ...prev, [rem.id]: j.reminder }));
       }
-      setToast("סומן כבוצע");
+      setToast(
+        field === "action"
+          ? on
+            ? "סומן כבוצע"
+            : "בוטל סימון בוצע"
+          : on
+            ? "סומן כשולם"
+            : "בוטל סימון שולם"
+      );
       router.refresh();
     } else {
+      setDocs((prev) => ({ ...prev, [rem.id]: rem }));
       const j = await res.json().catch(() => ({}));
-      setToast(`שגיאה: ${j.error || "סימון נכשל"}`);
-      router.refresh();
-    }
-  }
-
-  async function markDocPaid(depositId: string, reminderId?: string) {
-    let rem: Reminder | null | undefined =
-      (reminderId && docs[depositId]?.id === reminderId
-        ? docs[depositId]
-        : null) || docs[depositId];
-    if (!rem) {
-      rem = await ensureDocReminder(depositId);
-    }
-    if (!rem) return;
-    const rid = rem.id;
-    const now = new Date().toISOString();
-    const dep = deposits.find((d) => d.id === depositId);
-    const next = { ...rem, paymentDoneAt: now, paidAt: now };
-    if (dep) {
-      setDocs((prev) => ({ ...prev, [depositId]: next }));
-      setDocTab(docBucket(dep, next));
-    }
-    const res = await fetch(`/api/reminders/${rid}/mark-paid`, {
-      method: "POST",
-    });
-    if (res.ok) {
-      const j = await res.json().catch(() => ({}));
-      if (j.reminder && dep) {
-        setDocs((prev) => ({ ...prev, [depositId]: j.reminder }));
-        setDocTab(docBucket(dep, j.reminder));
-      }
-      setToast("סומן כשולם");
-      router.refresh();
-    } else {
-      const j = await res.json().catch(() => ({}));
-      setToast(`שגיאה: ${j.error || "סימון נכשל"}`);
-      router.refresh();
+      setToast(`שגיאה: ${j.error || "עדכון נכשל"}`);
     }
   }
 
@@ -401,22 +570,55 @@ export function DepositsTab({
 
   function docBucket(
     d: Deposit,
-    rem: Reminder | undefined
+    rem: Reminder | null | undefined
   ): "pending" | "done" | "paid" | "archive" {
     return depositDocBucket(d.depositType, rem);
   }
 
-  const filteredDeposits = useMemo(() => {
-    return deposits.filter((d) => docBucket(d, docs[d.id]) === docTab);
-  }, [deposits, docs, docTab]);
+  const monthRows = useMemo(() => {
+    const byDeposit: Record<string, Reminder[]> = {};
+    for (const r of Object.values(docs)) {
+      (byDeposit[r.depositId] ||= []).push(r);
+    }
+    const rows: { deposit: Deposit; reminder: Reminder | null }[] = [];
+    for (const d of deposits) {
+      const months = listMonthDocReminders(byDeposit[d.id] || []);
+      if (months.length === 0) rows.push({ deposit: d, reminder: null });
+      else for (const reminder of months) rows.push({ deposit: d, reminder });
+    }
+    rows.sort((a, b) => {
+      const ad = a.reminder?.targetDate || "0000";
+      const bd = b.reminder?.targetDate || "0000";
+      if (ad !== bd) return ad < bd ? 1 : -1;
+      const an = clientMap[a.deposit.clientId]?.name || "";
+      const bn = clientMap[b.deposit.clientId]?.name || "";
+      return an.localeCompare(bn, "he");
+    });
+    return rows;
+  }, [deposits, docs, clientMap]);
+
+  const namedRows = useMemo(() => {
+    const q = nameQuery.trim().toLowerCase();
+    if (!q) return monthRows;
+    return monthRows.filter((row) => {
+      const name = clientMap[row.deposit.clientId]?.name || "";
+      return name.toLowerCase().includes(q);
+    });
+  }, [monthRows, nameQuery, clientMap]);
 
   const tabCounts = useMemo(() => {
     const c = { pending: 0, done: 0, paid: 0, archive: 0 };
-    for (const d of deposits) {
-      c[docBucket(d, docs[d.id])]++;
+    for (const row of namedRows) {
+      c[docBucket(row.deposit, row.reminder)]++;
     }
     return c;
-  }, [deposits, docs]);
+  }, [namedRows]);
+
+  const filteredRows = useMemo(() => {
+    return namedRows.filter(
+      (row) => docBucket(row.deposit, row.reminder) === docTab
+    );
+  }, [namedRows, docTab]);
 
   return (
     <div className="max-w-6xl mx-auto animate-fade-in">
@@ -439,9 +641,47 @@ export function DepositsTab({
             ניהול הפקדות חוזרות, תיעוד חודשי, ותזכורות ליועץ וללקוח
           </p>
         </div>
-        <button className="btn-primary w-full sm:w-auto" onClick={openNew}>
-          <Plus size={18} /> הוספת הפקדה
-        </button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <select
+            className="select"
+            value={exportAssociationId}
+            onChange={(e) => setExportAssociationId(e.target.value)}
+            aria-label="עמותה לייצוא"
+          >
+            <option value="">כל העמותות</option>
+            {associations.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+          <a
+            className="btn-secondary text-sm justify-center"
+            href={`/api/deposits/payers-export${
+              exportAssociationId
+                ? `?associationId=${encodeURIComponent(exportAssociationId)}`
+                : ""
+            }`}
+          >
+            <Download size={16} /> אקסל מעבירים
+          </a>
+          <button className="btn-primary w-full sm:w-auto" onClick={openNew}>
+            <Plus size={18} /> הוספת הפקדה
+          </button>
+        </div>
+      </div>
+
+      <div className="relative mb-4">
+        <Search
+          size={16}
+          className="absolute top-1/2 -translate-y-1/2 right-3 text-navy-400 pointer-events-none"
+        />
+        <input
+          className="input pr-10"
+          value={nameQuery}
+          onChange={(e) => setNameQuery(e.target.value)}
+          placeholder="חיפוש לפי שם לקוח"
+        />
       </div>
 
       <div
@@ -483,7 +723,7 @@ export function DepositsTab({
         </div>
       )}
 
-      {filteredDeposits.length === 0 ? (
+      {filteredRows.length === 0 ? (
         <div className="card text-center py-16">
           <div className="inline-flex p-5 rounded-2xl bg-navy-50 border border-navy-100 mb-4">
             <CreditCard size={32} className="text-navy-700" />
@@ -492,26 +732,32 @@ export function DepositsTab({
             אין הפקדות בלשונית זו
           </h3>
           <p className="text-navy-700">
-            {deposits.length === 0
-              ? "הוסף הפקדה ראשונה כדי להתחיל"
-              : "כשתסמן בוצע / שולם — ההפקדה תעבור לכאן"}
+            {nameQuery.trim()
+              ? "אין הפקדות שתואמות לחיפוש"
+              : deposits.length === 0
+                ? "הוסף הפקדה ראשונה כדי להתחיל"
+                : "כשתסמן בוצע / שולם — השורה תעבור לכאן"}
           </p>
         </div>
       ) : (
         <div className="grid gap-4">
-          {filteredDeposits.map((d) => {
+          {filteredRows.map(({ deposit: d, reminder: rem }) => {
             const client = clientMap[d.clientId];
             const assoc = d.associationId ? associationMap[d.associationId] : null;
             const meta = reminderMeta[d.id];
-            const rem = docs[d.id];
             const needsPay = depositRequiresPayment(d.depositType);
             const actionDone = !!rem?.actionDoneAt;
             const paidDone = !!(rem?.paymentDoneAt || rem?.paidAt);
             return (
-              <div key={d.id} className="card">
+              <div key={rem ? rem.id : d.id} className="card">
                 <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-2">
+                      {rem?.monthBucket && (
+                        <span className="chip chip-gold">
+                          <Calendar size={12} /> {formatMonthBucket(rem.monthBucket)}
+                        </span>
+                      )}
                       <span className="chip">
                         <User size={12} /> {client?.name || "לקוח לא ידוע"}
                       </span>
@@ -535,6 +781,16 @@ export function DepositsTab({
                         <span className="case-meta">
                           <Building2 size={12} /> {assoc.name}
                         </span>
+                      )}
+                      {depositAsksForPayer(d) && (
+                        <PayerNameField
+                          depositId={d.id}
+                          reminderId={rem?.id}
+                          value={rem?.payerName || ""}
+                          onSaved={(saved) =>
+                            setDocs((prev) => ({ ...prev, [saved.id]: saved }))
+                          }
+                        />
                       )}
                       {!d.active && <span className="chip chip-red">כבוי</span>}
                     </div>
@@ -577,43 +833,30 @@ export function DepositsTab({
                       <p className="text-xs font-bold tracking-wide text-navy-600 mb-2">
                         תיעוד החודש
                       </p>
-                      <div className="flex flex-wrap gap-3">
-                        {actionDone ? (
-                          <span className="inline-flex items-center px-5 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-bold shadow-md shadow-emerald-500/25">
-                            בוצע
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="inline-flex items-center px-5 py-2.5 rounded-xl border-2 border-emerald-500/50 bg-emerald-50 text-emerald-800 text-sm font-bold hover:bg-emerald-500 hover:text-white transition-colors"
+                      <div className="flex flex-wrap gap-2">
+                        <StatusSwitch
+                          label="בוצע"
+                          tone="teal"
+                          on={actionDone}
+                          onClick={() =>
+                            void setDocFlag(d.id, rem?.id, "action", !actionDone)
+                          }
+                        />
+                        {needsPay && (
+                          <StatusSwitch
+                            label="שולם"
+                            tone="gold"
+                            on={paidDone}
                             onClick={() =>
-                              void markDocAction(d.id, rem?.id)
+                              void setDocFlag(d.id, rem?.id, "paid", !paidDone)
                             }
-                          >
-                            סמן כבוצע
-                          </button>
+                          />
                         )}
-                        {needsPay &&
-                          (paidDone ? (
-                            <span className="inline-flex items-center px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold shadow-md shadow-amber-500/25">
-                              שולם
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              className="inline-flex items-center px-5 py-2.5 rounded-xl border-2 border-amber-500/50 bg-amber-50 text-amber-900 text-sm font-bold hover:bg-amber-500 hover:text-white transition-colors"
-                              onClick={() =>
-                                void markDocPaid(d.id, rem?.id)
-                              }
-                            >
-                              סמן כשולם
-                            </button>
-                          ))}
                       </div>
                       {!rem && (
                         <p className="text-xs text-navy-500 mt-2">
-                          עדיין לא נפתחה תזכורת אוטומטית — סימון בוצע/שולם יפתח
-                          תיעוד לחודש הנוכחי עכשיו.
+                          שורת החודש תיפתח ב-1 לחודש. אפשר לסמן כבר עכשיו —
+                          התיעוד ייפתח לחודש הנוכחי.
                         </p>
                       )}
                     </div>
@@ -630,7 +873,7 @@ export function DepositsTab({
                     </label>
                     <button
                       className="btn-secondary text-sm"
-                      onClick={() => sendNow(d, "advisor")}
+                      onClick={() => sendNow(d, "advisor", rem?.id)}
                       disabled={!d.active}
                       title="שליחה מיידית ליועץ — ללא הגבלה"
                     >
@@ -638,7 +881,7 @@ export function DepositsTab({
                     </button>
                     <button
                       className="btn-secondary text-sm"
-                      onClick={() => sendNow(d, "client")}
+                      onClick={() => sendNow(d, "client", rem?.id)}
                       disabled={!d.active}
                       title="שליחה מיידית ללקוח — ללא הגבלה"
                     >
@@ -899,8 +1142,8 @@ export function DepositsTab({
               <div>
                 <label className="label">למי לשלוח את התזכורת *</label>
                 <p className="text-xs text-navy-600 mb-2">
-                  שליחה אוטומטית היא ליועץ בלבד. שליחה ללקוח מתבצעת ידנית ממסך
-                  התזכורות.
+                  שליחה אוטומטית היא ליועץ בלבד. שליחה ללקוח מתבצעת ידנית מהשורה של
+                  החודש.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {(["advisor", "client", "both"] as ReminderRecipient[]).map(

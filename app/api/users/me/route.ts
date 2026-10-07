@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSql, getUserById, nowIso } from "@/lib/db";
+import { ensureSchemaExtras, getSql, getUserById, nowIso } from "@/lib/db";
 import { getCurrentUser, AuthError } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +49,12 @@ export async function PUT(req: NextRequest) {
       body.autoRemindersEnabled === undefined
         ? user.autoRemindersEnabled
         : Boolean(body.autoRemindersEnabled);
+    const notifyClientResponses =
+      body.notifyClientResponses === undefined
+        ? user.notifyClientResponses
+        : Boolean(body.notifyClientResponses);
 
+    await ensureSchemaExtras();
     const sql = getSql();
     await sql`
       UPDATE users
@@ -58,6 +63,7 @@ export async function PUT(req: NextRequest) {
           company_name = ${companyName},
           dashboard_cards = ${dashboardCards},
           auto_reminders_enabled = ${autoRemindersEnabled ? 1 : 0},
+          notify_client_responses = ${notifyClientResponses ? 1 : 0},
           updated_at = ${nowIso()}
       WHERE id = ${user.id}
     `;

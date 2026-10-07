@@ -275,10 +275,10 @@ export function RemindersTab({
     }
   }
 
-  async function markActionDone(r: Reminder) {
+  async function markActionDone(r: Reminder, on = true) {
     const now = new Date().toISOString();
     const dep = depositMap[r.depositId];
-    const optimistic = { ...r, actionDoneAt: now };
+    const optimistic = { ...r, actionDoneAt: on ? now : null };
     const nextStatus = deriveReminderStatusFromDocs(
       optimistic,
       dep?.depositType
@@ -290,6 +290,8 @@ export function RemindersTab({
     );
     const res = await fetch(`/api/reminders/${r.id}/action-done`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ on }),
     });
     if (res.ok) {
       const j = await res.json().catch(() => ({}));
@@ -298,7 +300,7 @@ export function RemindersTab({
           prev.map((x) => (x.id === r.id ? { ...x, ...j.reminder } : x))
         );
       }
-      setToast("סומן כבוצע");
+      setToast(on ? "סומן כבוצע" : "בוטל סימון בוצע");
       router.refresh();
     } else {
       setReminders((prev) =>
@@ -313,10 +315,14 @@ export function RemindersTab({
     }
   }
 
-  async function markPaid(r: Reminder) {
+  async function markPaid(r: Reminder, on = true) {
     const now = new Date().toISOString();
     const dep = depositMap[r.depositId];
-    const optimistic = { ...r, paymentDoneAt: now, paidAt: now };
+    const optimistic = {
+      ...r,
+      paymentDoneAt: on ? now : null,
+      paidAt: on ? now : null,
+    };
     const nextStatus = deriveReminderStatusFromDocs(
       optimistic,
       dep?.depositType
@@ -328,6 +334,8 @@ export function RemindersTab({
     );
     const res = await fetch(`/api/reminders/${r.id}/mark-paid`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ on }),
     });
     if (res.ok) {
       const j = await res.json().catch(() => ({}));
@@ -336,7 +344,7 @@ export function RemindersTab({
           prev.map((x) => (x.id === r.id ? { ...x, ...j.reminder } : x))
         );
       }
-      setToast("סומן כשולם");
+      setToast(on ? "סומן כשולם" : "בוטל סימון שולם");
       router.refresh();
     } else {
       setReminders((prev) =>
@@ -681,35 +689,44 @@ export function RemindersTab({
                     {r.status !== "resolved" && (
                       <div className="rounded-xl border border-navy-100 bg-navy-50/50 p-3 space-y-2">
                         <p className="text-xs font-bold text-navy-700">מעקב</p>
-                        <div className="flex flex-wrap gap-2">
-                          {r.actionDoneAt ? (
-                            <span className="inline-flex px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold">
+                        <div className="flex flex-col gap-2">
+                          <button
+                            type="button"
+                            aria-pressed={!!r.actionDoneAt}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-navy-100 bg-white px-3 py-2 text-right"
+                            onClick={() => markActionDone(r, !r.actionDoneAt)}
+                          >
+                            <span className="text-xs font-bold text-navy-950">
                               בוצע
                             </span>
-                          ) : (
-                            <button
-                              type="button"
-                              className="inline-flex px-3 py-1.5 rounded-lg border-2 border-emerald-500/40 bg-emerald-50 text-emerald-800 text-xs font-bold hover:bg-emerald-500 hover:text-white"
-                              onClick={() => markActionDone(r)}
-                            >
-                              סמן כבוצע
-                            </button>
-                          )}
+                            <span
+                              className={`toggle pointer-events-none ${
+                                r.actionDoneAt ? "on" : ""
+                              }`}
+                              aria-hidden
+                            />
+                          </button>
                           {deposit &&
-                            depositRequiresPayment(deposit.depositType) &&
-                            (r.paymentDoneAt || r.paidAt ? (
-                              <span className="inline-flex px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold">
-                                שולם
-                              </span>
-                            ) : (
+                            depositRequiresPayment(deposit.depositType) && (
                               <button
                                 type="button"
-                                className="inline-flex px-3 py-1.5 rounded-lg border-2 border-amber-500/40 bg-amber-50 text-amber-900 text-xs font-bold hover:bg-amber-500 hover:text-white"
-                                onClick={() => markPaid(r)}
+                                aria-pressed={!!(r.paymentDoneAt || r.paidAt)}
+                                className="flex items-center justify-between gap-3 rounded-xl border border-navy-100 bg-white px-3 py-2 text-right"
+                                onClick={() =>
+                                  markPaid(r, !(r.paymentDoneAt || r.paidAt))
+                                }
                               >
-                                סמן כשולם
+                                <span className="text-xs font-bold text-navy-950">
+                                  שולם
+                                </span>
+                                <span
+                                  className={`toggle pointer-events-none gold ${
+                                    r.paymentDoneAt || r.paidAt ? "on" : ""
+                                  }`}
+                                  aria-hidden
+                                />
                               </button>
-                            ))}
+                            )}
                         </div>
                       </div>
                     )}

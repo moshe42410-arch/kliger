@@ -55,6 +55,23 @@ export function depositRequiresPayment(type: DepositType): boolean {
   return type === "salary_slip" || type === "kollel_scholarship";
 }
 
+/** שם מעביר רלוונטי להעברה לעמותה, לא למזומן. */
+export function depositAsksForPayer(deposit: {
+  depositType: DepositType;
+  scholarshipDelivery?: ScholarshipDelivery | null;
+  associationId?: string | null;
+}): boolean {
+  if (!deposit.associationId) return false;
+  if (deposit.depositType === "cash_check") return false;
+  if (
+    deposit.depositType === "kollel_scholarship" &&
+    (deposit.scholarshipDelivery || "cash") === "cash"
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function detectIncomeKeywords(notes: string | null | undefined): string[] {
   if (!notes) return [];
   const tags: string[] = [];

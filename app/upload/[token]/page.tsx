@@ -1,4 +1,5 @@
 import {
+  ensureSchemaExtras,
   getSql,
   getUserById,
   userAsAdvisor,
@@ -10,7 +11,7 @@ import {
   type ReminderRow,
 } from "@/lib/db";
 import { UploadForm } from "@/components/UploadForm";
-import { depositTypeLabel } from "@/lib/types";
+import { depositAsksForPayer, depositTypeLabel } from "@/lib/types";
 import { AlertCircle, CheckCircle2, Calendar, Banknote, ShieldCheck } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export default async function UploadPage({
 }: {
   params: { token: string };
 }) {
+  await ensureSchemaExtras();
   const sql = getSql();
   const rRows = await sql`SELECT * FROM reminders WHERE upload_token = ${params.token}`;
   const rRow = rRows[0] as ReminderRow | undefined;
@@ -66,33 +68,18 @@ export default async function UploadPage({
     (uploadCountRows as Array<{ c: number }>)[0]?.c ?? 0
   );
 
-  const alreadyUsed = uploadsCount > 0 || reminder.status === "resolved";
   const brandName = advisor?.companyName || advisor?.name || "KLIGER";
   const logoUserId = advisor?.logoFilename ? advisor.id : null;
 
   return (
     <UploadShell advisorName={brandName} logoUserId={logoUserId} logoFilename={advisor?.logoFilename ?? null}>
-      {alreadyUsed ? (
-        <div className="card text-center py-12 relative overflow-hidden animate-fade-in-up">
-          <div className="blob blob-gold w-64 h-64 -top-20 -right-20 opacity-40" />
-          <div className="relative">
-            <div className="inline-flex p-5 rounded-2xl kpi-icon green mb-4">
-              <CheckCircle2 size={36} />
-            </div>
-            <h1 className="text-fluid-2xl font-heading font-bold text-navy-950 mb-3">
-              האסמכתא כבר התקבלה
-            </h1>
-            <p className="text-navy-700 mb-2 max-w-md mx-auto">
-              קישור זה שימש כבר להעלאת אסמכתא בהצלחה.
-            </p>
-            <p className="text-navy-500 text-sm max-w-md mx-auto">
-              במידה ויש צורך לעדכן או להוסיף קבצים נוספים - אנא פנה אלינו ונשלח
-              קישור חדש.
-            </p>
-          </div>
+      {uploadsCount > 0 && (
+        <div className="mb-4 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900 flex items-center gap-2">
+          <CheckCircle2 size={16} className="shrink-0" />
+          כבר התקבלו {uploadsCount} קבצים בקישור הזה. אפשר להעלות עוד.
         </div>
-      ) : (
-        <div className="card card-gold relative overflow-hidden animate-fade-in-up">
+      )}
+      <div className="card card-gold relative overflow-hidden animate-fade-in-up">
           <div className="blob blob-gold w-72 h-72 -top-24 -right-24 opacity-30" />
 
           <div className="relative">
@@ -135,7 +122,11 @@ export default async function UploadPage({
               </div>
             )}
 
-            <UploadForm token={params.token} />
+            <UploadForm
+              token={params.token}
+              showPayer={!!deposit && depositAsksForPayer(deposit)}
+              initialPayerName={reminder.payerName || ""}
+            />
 
             <div className="mt-6 flex items-center gap-2 text-xs text-navy-600 justify-center">
               <ShieldCheck size={14} className="text-teal-600" />
@@ -143,7 +134,6 @@ export default async function UploadPage({
             </div>
           </div>
         </div>
-      )}
     </UploadShell>
   );
 }
