@@ -11,8 +11,10 @@ import {
   Save,
   ArrowRight,
   Banknote,
+  Send,
 } from "lucide-react";
 import type { Association } from "@/lib/db";
+import { associationQueueHint } from "@/lib/association-queue";
 
 interface FormState {
   id?: string;
@@ -22,6 +24,7 @@ interface FormState {
   branchNumber: string;
   accountNumber: string;
   notes: string;
+  handlingQueue: "done" | "unpaid";
 }
 
 const emptyForm: FormState = {
@@ -31,6 +34,7 @@ const emptyForm: FormState = {
   branchNumber: "",
   accountNumber: "",
   notes: "",
+  handlingQueue: "done",
 };
 
 export function AssociationsTab({
@@ -46,6 +50,8 @@ export function AssociationsTab({
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function openCreate() {
@@ -63,6 +69,7 @@ export function AssociationsTab({
       branchNumber: a.branchNumber || "",
       accountNumber: a.accountNumber || "",
       notes: a.notes || "",
+      handlingQueue: a.handlingQueue === "unpaid" ? "unpaid" : "done",
     });
     setShowForm(true);
     setError(null);
@@ -79,6 +86,7 @@ export function AssociationsTab({
         branchNumber: form.branchNumber.trim(),
         accountNumber: form.accountNumber.trim(),
         notes: form.notes.trim(),
+        handlingQueue: form.handlingQueue,
       };
       if (!payload.name) throw new Error("שם העמותה חובה");
       if (payload.email && !payload.email.includes("@"))
@@ -125,6 +133,23 @@ export function AssociationsTab({
     }
   }
 
+  async function sendDigest(a: Association) {
+    setNotice(null);
+    setSendingId(a.id);
+    try {
+      const res = await fetch(`/api/associations/${a.id}/pending-digest`, {
+        method: "POST",
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || "השליחה נכשלה");
+      setNotice(`נשלחה התראה אל ${a.name} (${j.count} שורות) ל־${j.to}`);
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSendingId(null);
+    }
+  }
+
   return (
     <div className="max-w-6xl mx-auto animate-fade-in">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
@@ -138,6 +163,12 @@ export function AssociationsTab({
           <Plus size={18} /> הקמת עמותה
         </button>
       </div>
+
+      {notice && (
+        <div className="mb-4 p-3 rounded-xl bg-teal-50 border border-teal-200 text-teal-900 text-sm">
+          {notice}
+        </div>
+      )}
 
       {associations.length === 0 ? (
         <div className="card text-center py-16">
@@ -173,6 +204,9 @@ export function AssociationsTab({
                   ) : (
                     <span className="chip">לא משויכת להפקדות</span>
                   )}
+                  <span className="chip chip-gold">
+                    {associationQueueHint(a.handlingQueue)}
+                  </span>
                 </div>
                 <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-navy-700">
                   {a.email && (
@@ -201,7 +235,20 @@ export function AssociationsTab({
                   <div className="mt-2 text-sm text-navy-500">{a.notes}</div>
                 )}
               </div>
-              <div className="flex gap-2 shrink-0">
+              <div className="flex gap-2 shrink-0 flex-wrap">
+                <button
+                  className="btn-secondary text-sm"
+                  onClick={() => void sendDigest(a)}
+                  disabled={!a.email || sendingId === a.id}
+                  title={
+                    a.email
+                      ? "שליחת מייל אחד עם כל ההפקדות שממתינות לטיפול העמותה"
+                      : "צריך מייל של העמותה כדי לשלוח"
+                  }
+                >
+                  <Send size={14} />
+                  {sendingId === a.id ? "שולח..." : "שלח התראה מרוכזת"}
+                </button>
                 <button className="btn-ghost" onClick={() => openEdit(a)}>
                   <Edit3 size={16} /> עריכה
                 </button>
@@ -289,6 +336,49 @@ export function AssociationsTab({
                     }
                     placeholder="456789"
                   />
+                </div>
+              </div>
+
+              <div>
+                <label className="label">מה ממתין לטיפול העמותה</label>
+                <div className="grid gap-2">
+                  <label className="flex items-start gap-2 text-sm text-navy-800">
+                    <input
+                      type="radio"
+                      name="handlingQueue"
+                      className="mt-1"
+                      checked={form.handlingQueue === "done"}
+                      onChange={() =>
+                        setForm({ ...form, handlingQueue: "done" })
+                      }
+                    />
+                    <span>
+                      <span className="font-semibold">רק מה שסומן בוצע</span>
+                      <span className="block text-xs text-navy-500">
+                        יישלחו חודשים שסומנו בוצע ועדיין לא שולמו.
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 text-sm text-navy-800">
+                    <input
+                      type="radio"
+                      name="handlingQueue"
+                      className="mt-1"
+                      checked={form.handlingQueue === "unpaid"}
+                      onChange={() =>
+                        setForm({ ...form, handlingQueue: "unpaid" })
+                      }
+                    />
+                    <span>
+                      <span className="font-semibold">
+                        גם מה שממתין לסימון שולם
+                      </span>
+                      <span className="block text-xs text-navy-500">
+                        יישלחו גם חודשים שעדיין לא סומנו כשולם, גם אם בוצע עוד
+                        לא סומן.
+                      </span>
+                    </span>
+                  </label>
                 </div>
               </div>
 

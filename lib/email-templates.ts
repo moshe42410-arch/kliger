@@ -16,6 +16,7 @@ export type TemplateId =
   | "advisor_primary_client_flow"
   | "client_primary_advisor_flow"
   | "association_transfer"
+  | "association_pending_digest"
   | "waiting_digest"
   | "advisor_file_uploaded"
   | "advisor_client_reply"
@@ -101,6 +102,11 @@ export const TEMPLATE_VARIABLES: TemplateVar[] = [
     key: "digestBody",
     label: "גוף סיכום ממתינים",
     example: "ממתינים לביצוע פעולה (2):\n• …",
+  },
+  {
+    key: "queueLabel",
+    label: "כלל ההמתנה של העמותה",
+    example: "רק מה שסומן בוצע",
   },
   {
     key: "remindersLink",
@@ -284,6 +290,21 @@ export const TEMPLATE_META: TemplateMeta[] = [
       "fileCount",
       "clientEmail",
       "clientPhone",
+      "companyName"
+    ),
+  },
+  {
+    id: "association_pending_digest",
+    label: "התראה מרוכזת לעמותה",
+    description:
+      "נשלח לעמותה בלחיצה, עם כל ההפקדות שממתינות לטיפול לפי ההגדרה שלה",
+    category: "ops",
+    audience: "association",
+    variableKeys: V(
+      "associationName",
+      "itemCount",
+      "queueLabel",
+      "digestBody",
       "companyName"
     ),
   },
@@ -482,6 +503,20 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
 {clientPhone}
 
 מצורפים {fileCount} קבצים שהלקוח העלה.
+
+בברכה,
+{companyName}`,
+  },
+
+  association_pending_digest: {
+    subject: "הפקדות ממתינות לטיפול — {associationName} ({itemCount})",
+    body: `לכבוד {associationName},
+
+להלן {itemCount} הפקדות שממתינות לטיפולכם.
+כלל השליחה: {queueLabel}.
+
+חודש | מקבל | מעביר | סכום | סוג | תאריך יעד | בוצע | שולם
+{digestBody}
 
 בברכה,
 {companyName}`,

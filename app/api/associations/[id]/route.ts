@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  ensureSchemaExtras,
   getSql,
   nowIso,
   parseAssociation,
@@ -15,6 +16,7 @@ export async function PUT(
 ) {
   try {
     const ownerId = await getCurrentOwnerId();
+    await ensureSchemaExtras();
     const body = await req.json();
     const name = String(body.name || "").trim();
     const email = body.email ? String(body.email).trim() : null;
@@ -26,6 +28,7 @@ export async function PUT(
       ? String(body.accountNumber).trim()
       : null;
     const notes = body.notes ? String(body.notes) : null;
+    const handlingQueue = body.handlingQueue === "unpaid" ? "unpaid" : "done";
 
     if (!name) return NextResponse.json({ error: "שם חובה" }, { status: 400 });
 
@@ -43,6 +46,7 @@ export async function PUT(
           branch_number = ${branchNumber},
           account_number = ${accountNumber},
           notes = ${notes},
+          handling_queue = ${handlingQueue},
           updated_at = ${nowIso()}
       WHERE id = ${params.id}
     `;

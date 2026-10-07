@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { getSql, parseAssociation, type AssociationRow } from "@/lib/db";
+import { ensureSchemaExtras, getSql, parseAssociation, type AssociationRow } from "@/lib/db";
 import { getCurrentOwnerId } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +22,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const ownerId = await getCurrentOwnerId();
+    await ensureSchemaExtras();
     const body = await req.json();
     const name = String(body.name || "").trim();
     const email = body.email ? String(body.email).trim() : null;
@@ -33,14 +34,15 @@ export async function POST(req: NextRequest) {
       ? String(body.accountNumber).trim()
       : null;
     const notes = body.notes ? String(body.notes) : null;
+    const handlingQueue = body.handlingQueue === "unpaid" ? "unpaid" : "done";
 
     if (!name) return NextResponse.json({ error: "שם העמותה חובה" }, { status: 400 });
 
     const sql = getSql();
     const id = uuid();
     await sql`
-      INSERT INTO associations (id, owner_id, name, email, bank_number, branch_number, account_number, notes)
-      VALUES (${id}, ${ownerId}, ${name}, ${email}, ${bankNumber}, ${branchNumber}, ${accountNumber}, ${notes})
+      INSERT INTO associations (id, owner_id, name, email, bank_number, branch_number, account_number, notes, handling_queue)
+      VALUES (${id}, ${ownerId}, ${name}, ${email}, ${bankNumber}, ${branchNumber}, ${accountNumber}, ${notes}, ${handlingQueue})
     `;
 
     const rows = await sql`SELECT * FROM associations WHERE id = ${id}`;

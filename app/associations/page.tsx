@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSql, parseAssociation, type AssociationRow } from "@/lib/db";
+import { getSql, parseAssociation, type AssociationRow, ensureSchemaExtras } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { AssociationsTab } from "@/components/AssociationsTab";
 
@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function AssociationsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  await ensureSchemaExtras();
   const sql = getSql();
   const ownerId = user.id;
 

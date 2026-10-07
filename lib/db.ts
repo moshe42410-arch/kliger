@@ -91,6 +91,13 @@ export function ensureSchemaExtras(): Promise<void> {
   schemaExtras = (async () => {
     await sql`ALTER TABLE reminders ADD COLUMN IF NOT EXISTS payer_name TEXT`;
     await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_client_responses INTEGER NOT NULL DEFAULT 1`;
+    await sql`ALTER TABLE associations ADD COLUMN IF NOT EXISTS handling_queue TEXT NOT NULL DEFAULT 'done'`;
+    await sql`
+      CREATE TABLE IF NOT EXISTS file_blobs (
+        key TEXT PRIMARY KEY,
+        content BYTEA NOT NULL
+      )
+    `;
   })().catch((err) => {
     schemaExtras = null;
     throw err;
@@ -526,6 +533,7 @@ export interface AssociationRow {
   branch_number: string | null;
   account_number: string | null;
   notes: string | null;
+  handling_queue?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -539,6 +547,8 @@ export interface Association {
   branchNumber: string | null;
   accountNumber: string | null;
   notes: string | null;
+  /** done = רק חודשים שסומנו בוצע. unpaid = גם חודשים שממתינים לסימון שולם. */
+  handlingQueue: "done" | "unpaid";
   createdAt: string;
   updatedAt: string;
 }
@@ -553,6 +563,7 @@ export function parseAssociation(row: AssociationRow): Association {
     branchNumber: row.branch_number,
     accountNumber: row.account_number,
     notes: row.notes,
+    handlingQueue: row.handling_queue === "unpaid" ? "unpaid" : "done",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

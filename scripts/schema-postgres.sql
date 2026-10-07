@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS associations (
   branch_number TEXT,
   account_number TEXT,
   notes TEXT,
+  handling_queue TEXT NOT NULL DEFAULT 'done',
   created_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS')),
   updated_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS'))
 );
@@ -141,6 +142,11 @@ CREATE TABLE IF NOT EXISTS uploads (
   mime_type TEXT,
   size INTEGER,
   uploaded_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS'))
+);
+
+CREATE TABLE IF NOT EXISTS file_blobs (
+  key TEXT PRIMARY KEY,
+  content BYTEA NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS client_documents (

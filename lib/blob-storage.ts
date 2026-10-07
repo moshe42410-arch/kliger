@@ -11,12 +11,57 @@
 import fs from "node:fs";
 import path from "node:path";
 import { put, del } from "@vercel/blob";
+import { ensureSchemaExtras, getSql } from "./db";
 
 const LOCAL_UPLOADS_DIR = path.join(process.cwd(), "uploads");
 const LOCAL_LOGOS_DIR = path.join(process.cwd(), "uploads", "logos");
 
 function useVercelBlob(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+}
+
+function localDiskWritable(): boolean {
+  if (process.env.VERCEL) return false;
+  try {
+    ensureLocalDirs();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function bytesFromDb(value: unknown): Buffer | null {
+  if (!value) return null;
+  if (Buffer.isBuffer(value)) return value;
+  if (value instanceof Uint8Array) return Buffer.from(value);
+  if (typeof value === "string") {
+    if (value.startsWith("\\x")) return Buffer.from(value.slice(2), "hex");
+    return Buffer.from(value, "base64");
+  }
+  return null;
+}
+
+/** When the server disk is read-only (Vercel) and Blob isn't configured. */
+async function storeInDatabase(
+  filename: string,
+  buffer: Buffer,
+  contentType: string | undefined,
+  kind: "upload" | "logo"
+): Promise<StoredFile> {
+  await ensureSchemaExtras();
+  const sql = getSql();
+  const key = `db:${filename}`;
+  await sql`
+    INSERT INTO file_blobs (key, content)
+    VALUES (${key}, ${buffer})
+    ON CONFLICT (key) DO UPDATE SET content = EXCLUDED.content
+  `;
+  const baseUrl = process.env.APP_URL || "http://localhost:3000";
+  const url =
+    kind === "logo"
+      ? `${baseUrl}/api/users/logo/${encodeURIComponent(key)}`
+      : `${baseUrl}/api/uploads/${encodeURIComponent(key)}`;
+  return { key, url, size: buffer.length, contentType };
 }
 
 function ensureLocalDirs() {
@@ -60,7 +105,10 @@ export async function putUpload(
     };
   }
 
-  ensureLocalDirs();
+  if (!localDiskWritable()) {
+    return storeInDatabase(filename, buffer, contentType, "upload");
+  }
+
   const fullPath = path.join(LOCAL_UPLOADS_DIR, filename);
   await fs.promises.writeFile(fullPath, buffer);
   const baseUrl = process.env.APP_URL || "http://localhost:3000";
@@ -94,7 +142,10 @@ export async function putLogo(
     };
   }
 
-  ensureLocalDirs();
+  if (!localDiskWritable()) {
+    return storeInDatabase(filename, buffer, contentType, "logo");
+  }
+
   const fullPath = path.join(LOCAL_LOGOS_DIR, filename);
   await fs.promises.writeFile(fullPath, buffer);
   const baseUrl = process.env.APP_URL || "http://localhost:3000";
@@ -112,7 +163,6 @@ export async function putLogo(
  */
 export async function deleteBlob(key: string): Promise<void> {
   if (key.startsWith("http")) {
-    // Vercel Blob URL
     try {
       await del(key);
     } catch (err) {
@@ -121,7 +171,17 @@ export async function deleteBlob(key: string): Promise<void> {
     return;
   }
 
-  // Local file
+  if (key.startsWith("db:")) {
+    try {
+      await ensureSchemaExtras();
+      const sql = getSql();
+      await sql`DELETE FROM file_blobs WHERE key = ${key}`;
+    } catch (err) {
+      console.warn("[blob] db delete failed:", err);
+    }
+    return;
+  }
+
   const tryPaths = [
     path.join(LOCAL_UPLOADS_DIR, key),
     path.join(LOCAL_LOGOS_DIR, key),
@@ -148,6 +208,18 @@ export async function getBlobBytes(key: string): Promise<Buffer | null> {
       if (!res.ok) return null;
       const arr = await res.arrayBuffer();
       return Buffer.from(arr);
+    } catch {
+      return null;
+    }
+  }
+
+  if (key.startsWith("db:")) {
+    try {
+      await ensureSchemaExtras();
+      const sql = getSql();
+      const rows = await sql`SELECT content FROM file_blobs WHERE key = ${key} LIMIT 1`;
+      const row = rows[0] as { content?: unknown } | undefined;
+      return bytesFromDb(row?.content);
     } catch {
       return null;
     }

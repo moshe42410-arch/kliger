@@ -280,6 +280,7 @@ export function DepositsTab({
   );
   const [nameQuery, setNameQuery] = useState("");
   const [exportAssociationId, setExportAssociationId] = useState("");
+  const [sendingDigest, setSendingDigest] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -471,6 +472,30 @@ export function DepositsTab({
     }
   }
 
+  async function sendAssociationDigest() {
+    if (!exportAssociationId) {
+      setToast("בחר עמותה מהרשימה, ואז שלח את ההתראה");
+      return;
+    }
+    setSendingDigest(true);
+    try {
+      const res = await fetch(
+        `/api/associations/${exportAssociationId}/pending-digest`,
+        { method: "POST" }
+      );
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast(j.error || "השליחה נכשלה");
+        return;
+      }
+      const name =
+        associationMap[exportAssociationId]?.name || "העמותה";
+      setToast(`נשלחה התראה אל ${name} (${j.count} שורות)`);
+    } finally {
+      setSendingDigest(false);
+    }
+  }
+
   async function sendNow(
     d: Deposit,
     to: "advisor" | "client" = "advisor",
@@ -634,14 +659,22 @@ export function DepositsTab({
           {toast}
         </div>
       )}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="section-title mb-2">הפקדות</h1>
-          <p className="section-subtitle">
-            ניהול הפקדות חוזרות, תיעוד חודשי, ותזכורות ליועץ וללקוח
-          </p>
+      <div className="flex flex-col gap-4 mb-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="section-title mb-2">הפקדות</h1>
+            <p className="section-subtitle">
+              ניהול הפקדות חוזרות, תיעוד חודשי, ותזכורות ליועץ וללקוח
+            </p>
+          </div>
+          <button
+            className="btn-primary shrink-0 whitespace-nowrap px-6"
+            onClick={openNew}
+          >
+            <Plus size={18} /> הוספת הפקדה
+          </button>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             className="select"
             value={exportAssociationId}
@@ -656,7 +689,7 @@ export function DepositsTab({
             ))}
           </select>
           <a
-            className="btn-secondary text-sm justify-center"
+            className="btn-secondary text-sm justify-center whitespace-nowrap"
             href={`/api/deposits/payers-export${
               exportAssociationId
                 ? `?associationId=${encodeURIComponent(exportAssociationId)}`
@@ -665,8 +698,14 @@ export function DepositsTab({
           >
             <Download size={16} /> אקסל מעבירים
           </a>
-          <button className="btn-primary w-full sm:w-auto" onClick={openNew}>
-            <Plus size={18} /> הוספת הפקדה
+          <button
+            className="btn-secondary text-sm justify-center shrink-0 whitespace-nowrap"
+            onClick={() => void sendAssociationDigest()}
+            disabled={sendingDigest}
+            title="מייל אחד לעמותה שנבחרה, עם כל ההפקדות שממתינות לטיפול שלה"
+          >
+            <Send size={16} />
+            {sendingDigest ? "שולח..." : "שלח התראה לעמותה"}
           </button>
         </div>
       </div>
