@@ -155,8 +155,10 @@ export function EmailTemplatesEditor() {
           <Mail size={22} className="text-teal-600" /> ניסוח כל המיילים
         </h2>
         <p className="text-navy-700 text-sm leading-relaxed">
-          הטקסט שנשמר כאן הוא בדיוק מה שנשלח. אפשר לנסח כל מייל ולשמור אותו
-          כברירת מחדל. השתמשו במשתנים כמו{" "}
+          הטקסט שנשמר כאן הוא בדיוק מה שנשלח. לכל מקרה יש מכתב משלו: תלוש
+          במזומן, הפקדה לחשבון כמשכורת, מילגה במזומן, מילגה בהעברה לעמותה,
+          והפקדת מזומן או צ׳ק. המערכת בוחרת את המכתב לפי סוג ההפקדה.
+          השתמשו במשתנים כמו{" "}
           <code
             className="bg-cream-100 px-1.5 py-0.5 rounded font-mono text-xs"
             dir="ltr"
@@ -393,7 +395,8 @@ function PreviewModal({
     previewVars[v.key] = v.example;
   });
   previewVars.fileList = "מצורף דוח תוצאות עיון.pdf";
-  previewVars.accountBlock = "\n\nמס' חשבון עמותה: 12-345-6789";
+  previewVars.accountBlock = "פרטי החשבון של עמותת כהן:\nבנק: 12\nסניף: 345\nמספר חשבון: 6789";
+  previewVars.followUpLine = "";
 
   const renderedSubject = renderPreview(template.subject, previewVars);
   const renderedBody = renderPreview(template.body, previewVars);

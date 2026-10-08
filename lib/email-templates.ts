@@ -9,6 +9,12 @@ export type TemplateCategory = "documents" | "reminders" | "ops";
 
 export type TemplateId =
   | "documents_send"
+  | "client_salary_cash"
+  | "client_salary_transfer"
+  | "client_scholarship_cash"
+  | "client_scholarship_transfer"
+  | "client_cash_check"
+  | "advisor_reminder"
   | "client_primary"
   | "client_verify"
   | "advisor_primary_advisor_flow"
@@ -144,6 +150,16 @@ export const TEMPLATE_VARIABLES: TemplateVar[] = [
     example: "העברתי היום מהחשבון של אבא",
   },
   {
+    key: "followUpLine",
+    label: "שורת תזכורת נוספת (ריקה בשליחה הראשונה)",
+    example: "",
+  },
+  {
+    key: "situationLabel",
+    label: "תיאור המקרה ליועץ",
+    example: "מילגה בהעברה לחשבון העמותה",
+  },
+  {
     key: "depositsLink",
     label: "קישור למסך הפקדות",
     example: "https://kliger.vercel.app/deposits",
@@ -175,109 +191,111 @@ export const TEMPLATE_META: TemplateMeta[] = [
     ),
   },
   {
-    id: "client_primary",
-    label: "תזכורת ראשונית ללקוח",
+    id: "client_salary_cash",
+    label: "תלוש — לדאוג למזומן",
+    description: "נשלח ללקוח כשההפקדה היא תלוש משכורת והוא צריך להכין מזומן",
+    category: "reminders",
+    audience: "client",
+    variableKeys: V(
+      "clientName",
+      "amount",
+      "targetDate",
+      "uploadUrl",
+      "followUpLine",
+      "companyName",
+      "advisorName",
+      "advisorPhone"
+    ),
+  },
+  {
+    id: "client_salary_transfer",
+    label: "תלוש — הפקדה לחשבון כמשכורת",
+    description: "נשלח ללקוח כשההפקדה היא העברה מאמצעי פרטי, כפעולת משכורת",
+    category: "reminders",
+    audience: "client",
+    variableKeys: V(
+      "clientName",
+      "amount",
+      "targetDate",
+      "uploadUrl",
+      "followUpLine",
+      "companyName",
+      "advisorName",
+      "advisorPhone"
+    ),
+  },
+  {
+    id: "client_scholarship_cash",
+    label: "מילגה — להביא מזומן",
+    description: "נשלח ללקוח כשמילגה מהכולל נמסרת במזומן, והוא צריך להביא אותו מראש",
+    category: "reminders",
+    audience: "client",
+    variableKeys: V(
+      "clientName",
+      "amount",
+      "targetDate",
+      "uploadUrl",
+      "followUpLine",
+      "companyName",
+      "advisorName",
+      "advisorPhone"
+    ),
+  },
+  {
+    id: "client_scholarship_transfer",
+    label: "מילגה — העברה לחשבון העמותה",
     description:
-      "נשלח ללקוח לפני תאריך יעד כשהאחריות עליו (מזומן / צ׳ק / העברה)",
+      "נשלח ללקוח כשהמילגה מועברת לחשבון העמותה, כולל שם מעביר אם הכסף יוצא מחשבון אחר",
     category: "reminders",
     audience: "client",
     variableKeys: V(
       "clientName",
-      "clientActionLine",
+      "amount",
+      "targetDate",
+      "associationName",
       "accountBlock",
+      "payerPrompt",
       "uploadUrl",
+      "followUpLine",
       "companyName",
       "advisorName",
-      "advisorPhone",
-      "payerPrompt",
-      "amount",
-      "depositType",
-      "targetDate",
-      "associationName"
+      "advisorPhone"
     ),
   },
   {
-    id: "client_primary_advisor_flow",
-    label: "עדכון ללקוח על יעד מתקרב",
-    description: "נשלח ללקוח כשהאחריות היא של היועץ (תלוש / מלגה / העברה)",
+    id: "client_cash_check",
+    label: "הפקדה — מזומן או צ׳ק",
+    description: "נשלח ללקוח כשהוא צריך לוודא שהפקיד מזומן או צ׳ק לחשבון",
     category: "reminders",
     audience: "client",
     variableKeys: V(
       "clientName",
-      "clientActionLine",
-      "accountBlock",
+      "amount",
+      "targetDate",
       "uploadUrl",
+      "followUpLine",
       "companyName",
       "advisorName",
-      "advisorPhone",
-      "payerPrompt",
-      "amount",
-      "depositType",
-      "targetDate",
-      "associationName"
+      "advisorPhone"
     ),
   },
   {
-    id: "client_verify",
-    label: "תזכורת דחופה ללקוח (איחור)",
-    description: "אסקלציה — כשהיועץ לא סימן ׳שולם׳ אחרי X ימים",
-    category: "reminders",
-    audience: "client",
-    variableKeys: V(
-      "clientName",
-      "clientActionLine",
-      "accountBlock",
-      "uploadUrl",
-      "companyName",
-      "advisorName",
-      "advisorPhone",
-      "payerPrompt",
-      "amount",
-      "depositType",
-      "targetDate",
-      "associationName"
-    ),
-  },
-  {
-    id: "advisor_primary_advisor_flow",
-    label: "התראה ליועץ — פעולה נדרשת",
-    description: "מזכיר לך שיש לבצע פעולה (תלוש / מלגה) לפני היעד",
+    id: "advisor_reminder",
+    label: "תזכורת ליועץ",
+    description:
+      "נשלח אליך לפני היעד, לכל סוגי ההפקדה. תזכורת נוספת אחרי היעד משתמשת באותו מכתב",
     category: "reminders",
     audience: "advisor",
     variableKeys: V(
       "advisorName",
       "clientName",
       "depositType",
+      "situationLabel",
       "amount",
-      "targetDate"
-    ),
-  },
-  {
-    id: "advisor_primary_client_flow",
-    label: "עדכון ליועץ — מעקב לקוח",
-    description: "מודיע לך שהלקוח אמור להפקיד עד היעד",
-    category: "reminders",
-    audience: "advisor",
-    variableKeys: V(
-      "advisorName",
-      "clientName",
-      "depositType",
-      "amount",
-      "targetDate"
-    ),
-  },
-  {
-    id: "advisor_verify",
-    label: "התראה ליועץ — לאמת תשלום",
-    description: "מזכיר לך לוודא שהלקוח שילם עבור פעולה שביצעת",
-    category: "reminders",
-    audience: "advisor",
-    variableKeys: V(
-      "advisorName",
-      "clientName",
-      "depositType",
-      "amount",
-      "targetDate"
+      "targetDate",
+      "followUpLine",
+      "depositsLink",
+      "companyName"
     ),
   },
   {
@@ -396,6 +414,128 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
 
 מצורף:
 {fileList}
+
+בברכה,
+{companyName}`,
+  },
+
+  client_salary_cash: {
+    subject: "תלוש משכורת — מזומן בסך {amount}",
+    body: `לכבוד {clientName},
+
+שלום,
+עד {targetDate} יש לדאוג למזומן בסך {amount} עבור תלוש המשכורת.
+
+אחרי שהמזומן הוכן, אפשר להעלות אסמכתא בקישור:
+{uploadUrl}
+
+{followUpLine}
+
+אפשר גם להשיב ישירות למייל הזה.
+
+בברכה,
+{companyName}
+{advisorName}
+{advisorPhone}`,
+  },
+
+  client_salary_transfer: {
+    subject: "הפקדה לחשבון כמשכורת — {amount}",
+    body: `לכבוד {clientName},
+
+שלום,
+עד {targetDate} יש לדאוג להפקדה לחשבון בסך {amount}, כשהפעולה מסומנת כמשכורת.
+
+אחרי ההפקדה, נא להעלות אסמכתא בקישור:
+{uploadUrl}
+
+{followUpLine}
+
+אפשר גם להשיב ישירות למייל הזה.
+
+בברכה,
+{companyName}
+{advisorName}
+{advisorPhone}`,
+  },
+
+  client_scholarship_cash: {
+    subject: "מילגה — מזומן בסך {amount}",
+    body: `לכבוד {clientName},
+
+שלום,
+מילגה בסך {amount} אמורה להיכנס עד {targetDate}.
+יש להביא את המזומן מראש.
+
+אחרי שהמזומן הוכן, אפשר להעלות אסמכתא בקישור:
+{uploadUrl}
+
+{followUpLine}
+
+אפשר גם להשיב ישירות למייל הזה.
+
+בברכה,
+{companyName}
+{advisorName}
+{advisorPhone}`,
+  },
+
+  client_scholarship_transfer: {
+    subject: "מילגה — העברה לחשבון העמותה בסך {amount}",
+    body: `לכבוד {clientName},
+
+שלום,
+עד {targetDate} יש להעביר מילגה בסך {amount} לחשבון העמותה {associationName}.
+ההעברה יוצאת מחשבון אחר. אחרי שהיא בוצעה, נא למלא בקישור את שם המעביר — בעל החשבון שממנו יצא הכסף.
+
+{accountBlock}
+
+אחרי ההעברה, נא להעלות אסמכתא בקישור:
+{uploadUrl}
+
+{followUpLine}
+
+אפשר גם להשיב ישירות למייל הזה.
+
+בברכה,
+{companyName}
+{advisorName}
+{advisorPhone}`,
+  },
+
+  client_cash_check: {
+    subject: "הפקדה — מזומן או צ׳ק בסך {amount}",
+    body: `לכבוד {clientName},
+
+שלום,
+נא לוודא שהופקד מזומן או צ׳ק בסך {amount} עד {targetDate}.
+
+אחרי ההפקדה, אפשר להעלות אסמכתא בקישור:
+{uploadUrl}
+
+{followUpLine}
+
+אפשר גם להשיב ישירות למייל הזה.
+
+בברכה,
+{companyName}
+{advisorName}
+{advisorPhone}`,
+  },
+
+  advisor_reminder: {
+    subject: "תזכורת: {clientName} · {depositType} · {amount}",
+    body: `לכבוד {advisorName},
+
+תזכורת עבור {clientName}.
+סוג: {depositType}
+מה נדרש: {situationLabel}
+סכום: {amount}
+תאריך יעד: {targetDate}
+
+{followUpLine}
+
+למסך ההפקדות: {depositsLink}
 
 בברכה,
 {companyName}`,

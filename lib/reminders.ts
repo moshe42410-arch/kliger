@@ -115,30 +115,48 @@ export function occurrencesInRange(
 function buildAccountBlock(association: Association | null): string {
   if (!association) return "";
   const lines: string[] = [];
-  lines.push(`יש להעביר את הכספים לחשבון של ${association.name}:`);
   if (association.bankNumber) lines.push(`בנק: ${association.bankNumber}`);
   if (association.branchNumber) lines.push(`סניף: ${association.branchNumber}`);
   if (association.accountNumber)
     lines.push(`מספר חשבון: ${association.accountNumber}`);
-  return lines.join("\n");
+  if (lines.length === 0) return "";
+  return [`פרטי החשבון של ${association.name}:`, ...lines].join("\n");
+}
+
+function situationLabelFor(deposit: Deposit): string {
+  switch (deposit.depositType) {
+    case "salary_slip":
+      return "תלוש משכורת — לדאוג למזומן";
+    case "private_transfer":
+      return "הפקדה לחשבון כמשכורת";
+    case "kollel_scholarship":
+      return (deposit.scholarshipDelivery || "cash") === "transfer"
+        ? "מילגה — העברה לחשבון העמותה מחשבון אחר"
+        : "מילגה — להביא מזומן מראש";
+    case "cash_check":
+      return "לוודא שהופקד צ׳ק או מזומן לחשבון";
+    default:
+      return depositTypeLabel[deposit.depositType];
+  }
 }
 
 export function pickTemplateId(
-  phase: ReminderPhase,
   recipientKind: "advisor" | "client",
-  responsibility: "advisor" | "client"
+  deposit: Deposit
 ): TemplateId {
-  if (phase === "verify_payment") {
-    return recipientKind === "advisor" ? "advisor_verify" : "client_verify";
+  if (recipientKind === "advisor") return "advisor_reminder";
+  switch (deposit.depositType) {
+    case "salary_slip":
+      return "client_salary_cash";
+    case "private_transfer":
+      return "client_salary_transfer";
+    case "kollel_scholarship":
+      return (deposit.scholarshipDelivery || "cash") === "transfer"
+        ? "client_scholarship_transfer"
+        : "client_scholarship_cash";
+    default:
+      return "client_cash_check";
   }
-  if (responsibility === "advisor") {
-    return recipientKind === "advisor"
-      ? "advisor_primary_advisor_flow"
-      : "client_primary_advisor_flow";
-  }
-  return recipientKind === "advisor"
-    ? "advisor_primary_client_flow"
-    : "client_primary";
 }
 
 export async function buildReminderContent(
@@ -154,15 +172,20 @@ export async function buildReminderContent(
   const advisorUser = await getUserById(deposit.ownerId);
   const templates = mergeTemplates(advisorUser?.emailTemplates ?? null);
 
-  const templateId = pickTemplateId(
-    phase,
-    recipientKind,
-    deposit.responsibility
-  );
+  const templateId = pickTemplateId(recipientKind, deposit);
   const template = templates[templateId];
 
-  const accountBlock = buildAccountBlock(association);
+  const scholarshipTransfer =
+    deposit.depositType === "kollel_scholarship" &&
+    (deposit.scholarshipDelivery || "cash") === "transfer";
+  const accountBlock = scholarshipTransfer
+    ? buildAccountBlock(association)
+    : "";
   const clientActionLine = buildClientActionLine(deposit, targetDateIso);
+  const followUpLine =
+    phase === "verify_payment"
+      ? "זו תזכורת נוספת — היעד כבר עבר ועדיין לא סומן שהוסדר."
+      : "";
   const deliveryMethod =
     scholarshipDeliveryLabel[deposit.scholarshipDelivery || "cash"];
   const timingPhrase = isTargetReachedOrPassed(targetDateIso)
@@ -183,12 +206,16 @@ export async function buildReminderContent(
     depositType: depositTypeLabel[deposit.depositType],
     uploadUrl,
     associationName: association?.name || "",
-    accountBlock: accountBlock ? `\n\n${accountBlock}` : "",
+    accountBlock,
     daysLate: String(ESCALATE_TO_CLIENT_AFTER_DAYS),
     clientActionLine,
     deliveryMethod,
     timingPhrase,
-    payerPrompt: buildPayerPrompt(client.name, deposit, association),
+    payerPrompt: scholarshipTransfer
+      ? buildPayerPrompt(client.name, deposit, association)
+      : "",
+    followUpLine,
+    situationLabel: situationLabelFor(deposit),
     depositsLink: depositsPageUrl(),
   };
 
