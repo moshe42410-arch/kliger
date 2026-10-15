@@ -46,8 +46,8 @@ export const BANK_OPTIONS = [
 ] as const;
 
 export const scholarshipDeliveryLabel: Record<ScholarshipDelivery, string> = {
-  cash: "מזומן",
-  transfer: "העברה",
+  cash: "משולם במזומן",
+  transfer: "משולם בהעברה",
 };
 
 /** Types that require both action + payment tracking */

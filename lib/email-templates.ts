@@ -226,8 +226,8 @@ export const TEMPLATE_META: TemplateMeta[] = [
   },
   {
     id: "client_scholarship_cash",
-    label: "מילגה — להביא מזומן",
-    description: "נשלח ללקוח כשמילגה מהכולל נמסרת במזומן, והוא צריך להביא אותו מראש",
+    label: "מילגה — משולם במזומן",
+    description: "נשלח ללקוח כשהמילגה משולמת במזומן: להכין מזומן וליצור קשר למסירה",
     category: "reminders",
     audience: "client",
     variableKeys: V(
@@ -243,9 +243,9 @@ export const TEMPLATE_META: TemplateMeta[] = [
   },
   {
     id: "client_scholarship_transfer",
-    label: "מילגה — העברה לחשבון העמותה",
+    label: "מילגה — משולם בהעברה",
     description:
-      "נשלח ללקוח כשהמילגה מועברת לחשבון העמותה, כולל שם מעביר אם הכסף יוצא מחשבון אחר",
+      "נשלח ללקוח כשהמילגה משולמת בהעברה. מצורפים פרטי החשבון של העמותה, והלקוח מעלה אסמכתא בקישור",
     category: "reminders",
     audience: "client",
     variableKeys: V(
@@ -465,9 +465,9 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
 
 שלום,
 מילגה בסך {amount} אמורה להיכנס עד {targetDate}.
-יש להביא את המזומן מראש.
+יש להכין מזומן וליצור קשר למסירתו.
 
-אחרי שהמזומן הוכן, אפשר להעלות אסמכתא בקישור:
+אחרי המסירה, אפשר להעלות אסמכתא בקישור:
 {uploadUrl}
 
 {followUpLine}
@@ -481,17 +481,18 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
   },
 
   client_scholarship_transfer: {
-    subject: "מילגה — העברה לחשבון העמותה בסך {amount}",
+    subject: "מילגה — העברה בסך {amount}",
     body: `לכבוד {clientName},
 
 שלום,
-עד {targetDate} יש להעביר מילגה בסך {amount} לחשבון העמותה {associationName}.
-ההעברה יוצאת מחשבון אחר. אחרי שהיא בוצעה, נא למלא בקישור את שם המעביר — בעל החשבון שממנו יצא הכסף.
+עד {targetDate} יש לבצע העברה בסך {amount} לחשבון העמותה {associationName}, לפי פרטי החשבון המצורפים.
 
 {accountBlock}
 
 אחרי ההעברה, נא להעלות אסמכתא בקישור:
 {uploadUrl}
+
+אם הכסף יוצא מחשבון אחר, נא למלא בקישור גם את שם המעביר.
 
 {followUpLine}
 
@@ -750,6 +751,52 @@ const LEGACY_TEMPLATES: Partial<Record<TemplateId, Template[]>> = {
 
 בברכה,
 {companyName}`,
+    },
+  ],
+  client_scholarship_cash: [
+    {
+      subject: "מילגה — מזומן בסך {amount}",
+      body: `לכבוד {clientName},
+
+שלום,
+מילגה בסך {amount} אמורה להיכנס עד {targetDate}.
+יש להביא את המזומן מראש.
+
+אחרי שהמזומן הוכן, אפשר להעלות אסמכתא בקישור:
+{uploadUrl}
+
+{followUpLine}
+
+אפשר גם להשיב ישירות למייל הזה.
+
+בברכה,
+{companyName}
+{advisorName}
+{advisorPhone}`,
+    },
+  ],
+  client_scholarship_transfer: [
+    {
+      subject: "מילגה — העברה לחשבון העמותה בסך {amount}",
+      body: `לכבוד {clientName},
+
+שלום,
+עד {targetDate} יש להעביר מילגה בסך {amount} לחשבון העמותה {associationName}.
+ההעברה יוצאת מחשבון אחר. אחרי שהיא בוצעה, נא למלא בקישור את שם המעביר — בעל החשבון שממנו יצא הכסף.
+
+{accountBlock}
+
+אחרי ההעברה, נא להעלות אסמכתא בקישור:
+{uploadUrl}
+
+{followUpLine}
+
+אפשר גם להשיב ישירות למייל הזה.
+
+בברכה,
+{companyName}
+{advisorName}
+{advisorPhone}`,
     },
   ],
   client_primary: [

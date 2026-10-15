@@ -664,31 +664,31 @@ export function DepositsTab({
       {
         key: "pending",
         title: "ממתינות",
-        hint: "עדיין לא הושלם",
+        hint: "",
         group: false,
       },
       {
         key: "done",
         title: "בוצעו",
-        hint: "בוצע, וממתין לשולם",
+        hint: "",
         group: false,
       },
       {
         key: "paid",
         title: "שולמו",
-        hint: "שולם, וממתין לבוצע",
+        hint: "",
         group: false,
       },
       {
         key: "archive",
         title: "ארכיון",
-        hint: "הושלמו, מחולק לפי חודש",
+        hint: "",
         group: true,
       },
       {
         key: "inactive",
         title: "כבויות",
-        hint: "הפקדה שכיבית. לא נפתח לה חודש חדש",
+        hint: "",
         group: true,
       },
     ] as const;
@@ -874,14 +874,25 @@ export function DepositsTab({
                 id={`deposit-section-${section.key}`}
                 className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
               >
-                <header className="flex items-center justify-between gap-3 bg-navy-950 px-4 py-2 text-white">
-                  <div className="min-w-0">
-                    <h2 className="text-sm font-bold">{section.title}</h2>
-                    <p className="text-[11px] text-white/70">{section.hint}</p>
+                <header className="flex items-center justify-between gap-3 bg-navy-950 px-4 py-3 text-white">
+                  <h2 className="text-xl font-black tracking-tight">
+                    {section.title}
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <a
+                      className="rounded-full bg-white px-3 py-1 text-xs font-black text-navy-950 hover:bg-teal-100"
+                      href={`/api/deposits/payers-export?section=${section.key}${
+                        exportAssociationId
+                          ? `&associationId=${encodeURIComponent(exportAssociationId)}`
+                          : ""
+                      }`}
+                    >
+                      אקסל
+                    </a>
+                    <span className="rounded-full bg-white/15 px-2.5 py-1 text-sm font-black">
+                      {section.rows.length}
+                    </span>
                   </div>
-                  <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-xs font-bold">
-                    {section.rows.length}
-                  </span>
                 </header>
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[980px] border-collapse text-sm">
@@ -904,7 +915,7 @@ export function DepositsTab({
                           <tr className="bg-slate-100/80">
                             <td
                               colSpan={9}
-                              className="px-3 py-1.5 text-xs font-bold text-navy-800"
+                              className="px-3 py-2 text-sm font-black text-navy-950"
                             >
                               {group.bucket === "0000-00"
                                 ? "בלי חודש"
@@ -1282,7 +1293,7 @@ export function DepositsTab({
 
               {form.depositType === "kollel_scholarship" && (
                 <div>
-                  <label className="label">אופן מילגה בתזכורת ללקוח</label>
+                  <label className="label">איך המילגה משולמת</label>
                   <div className="grid grid-cols-2 gap-2">
                     {(["cash", "transfer"] as ScholarshipDelivery[]).map(
                       (m) => (

@@ -131,8 +131,8 @@ function situationLabelFor(deposit: Deposit): string {
       return "הפקדה לחשבון כמשכורת";
     case "kollel_scholarship":
       return (deposit.scholarshipDelivery || "cash") === "transfer"
-        ? "מילגה — העברה לחשבון העמותה מחשבון אחר"
-        : "מילגה — להביא מזומן מראש";
+        ? "מילגה בהעברה — העברה לפי פרטי החשבון של העמותה"
+        : "מילגה במזומן — להכין מזומן וליצור קשר למסירה";
     case "cash_check":
       return "לוודא שהופקד צ׳ק או מזומן לחשבון";
     default:

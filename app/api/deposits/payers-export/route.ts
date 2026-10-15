@@ -34,11 +34,30 @@ function yesNo(on: boolean): string {
   return on ? "כן" : "לא";
 }
 
+function exportSection(row: {
+  deposit_type: string;
+  action_done_at: string | null;
+  payment_done_at: string | null;
+  paid_at: string | null;
+  active: number | boolean;
+}): string {
+  if (!row.active) return "inactive";
+  const action = !!row.action_done_at;
+  const paid = !!(row.payment_done_at || row.paid_at);
+  const needsPay = depositRequiresPayment(row.deposit_type as DepositType);
+  if (!needsPay) return action ? "archive" : "pending";
+  if (action && paid) return "archive";
+  if (action && !paid) return "done";
+  if (!action && paid) return "paid";
+  return "pending";
+}
+
 export async function GET(req: NextRequest) {
   try {
     await ensureSchemaExtras();
     const ownerId = await getCurrentOwnerId();
     const associationId = req.nextUrl.searchParams.get("associationId") || "";
+    const section = req.nextUrl.searchParams.get("section") || "";
     const sql = getSql();
 
     const rows = associationId
@@ -104,7 +123,7 @@ export async function GET(req: NextRequest) {
       "שולם",
       "פעיל",
     ];
-    const data = (rows as Array<{
+    const exportRows = (rows as Array<{
       month_bucket: string;
       target_date: string;
       payer_name: string | null;
@@ -117,7 +136,8 @@ export async function GET(req: NextRequest) {
       scholarship_delivery: string | null;
       active: number | boolean;
       association_name: string | null;
-    }>).map((r) => {
+    }>).filter((r) => !section || exportSection(r) === section);
+    const data = exportRows.map((r) => {
       const type = r.deposit_type as DepositType;
       const paid = !!(r.payment_done_at || r.paid_at);
       const needsPay = depositRequiresPayment(type);
@@ -162,7 +182,18 @@ export async function GET(req: NextRequest) {
     XLSX.utils.book_append_sheet(wb, ws, "מעבירים ומקבלים");
     wb.Workbook = { Views: [{ RTL: true }] };
     const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
-    const filename = "payers-recipients.xlsx";
+    const filename =
+      section === "pending"
+        ? "deposits-pending.xlsx"
+        : section === "done"
+          ? "deposits-done.xlsx"
+          : section === "paid"
+            ? "deposits-paid.xlsx"
+            : section === "archive"
+              ? "deposits-archive.xlsx"
+              : section === "inactive"
+                ? "deposits-inactive.xlsx"
+                : "payers-recipients.xlsx";
 
     return new NextResponse(new Uint8Array(buf), {
       status: 200,

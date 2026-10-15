@@ -309,7 +309,12 @@ export function AssociationsTab({
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="label">פרטי חשבון להעברות</label>
+                <p className="text-xs text-navy-600 mb-2">
+                  הפרטים האלה מצורפים למייל כשמילגה מסומנת «משולם בהעברה».
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="label">מספר בנק</label>
                   <input
@@ -346,6 +351,7 @@ export function AssociationsTab({
                     placeholder="456789"
                   />
                 </div>
+              </div>
               </div>
 
               <div>
