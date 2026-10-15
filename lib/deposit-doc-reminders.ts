@@ -46,6 +46,12 @@ export function occurrenceForCalendarMonth(
  * חודש נוכחי תמיד מוצג (מה-1), גם אם חודש קודם עדיין פתוח.
  * חודשים עתידיים נשארים מוסתרים עד ה-1 שלהם.
  */
+function bucketOfReminder(r: Reminder): string {
+  if (r.monthBucket && /^\d{4}-\d{2}$/.test(r.monthBucket)) return r.monthBucket;
+  const raw = (r.targetDate || "").slice(0, 7);
+  return /^\d{4}-\d{2}$/.test(raw) ? raw : "";
+}
+
 export function listMonthDocReminders(
   candidates: Reminder[],
   now: Date = new Date()
@@ -53,10 +59,23 @@ export function listMonthDocReminders(
   const current = monthBucketOf(now);
   const best = new Map<string, Reminder>();
   for (const r of candidates) {
-    if (r.phase !== "primary") continue;
-    if (!r.monthBucket || r.monthBucket > current) continue;
-    const prev = best.get(r.monthBucket);
-    if (!prev || r.targetDate > prev.targetDate) best.set(r.monthBucket, r);
+    const bucket = bucketOfReminder(r);
+    if (!bucket || bucket > current) continue;
+    const row = r.monthBucket === bucket ? r : { ...r, monthBucket: bucket };
+    const prev = best.get(bucket);
+    if (!prev) {
+      best.set(bucket, row);
+      continue;
+    }
+    const prevPrimary = prev.phase === "primary";
+    const nextPrimary = row.phase === "primary";
+    if (nextPrimary && !prevPrimary) {
+      best.set(bucket, row);
+      continue;
+    }
+    if (nextPrimary === prevPrimary && row.targetDate > prev.targetDate) {
+      best.set(bucket, row);
+    }
   }
   return [...best.values()].sort((a, b) =>
     a.targetDate < b.targetDate ? 1 : a.targetDate > b.targetDate ? -1 : 0

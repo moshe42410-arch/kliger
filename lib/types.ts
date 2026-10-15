@@ -55,7 +55,7 @@ export function depositRequiresPayment(type: DepositType): boolean {
   return type === "salary_slip" || type === "kollel_scholarship";
 }
 
-/** שם מעביר רלוונטי להעברה לעמותה, לא למזומן. */
+/** שם מעביר במייל ללקוח — רק העברה לעמותה, לא מזומן. */
 export function depositAsksForPayer(deposit: {
   depositType: DepositType;
   scholarshipDelivery?: ScholarshipDelivery | null;
@@ -70,6 +70,16 @@ export function depositAsksForPayer(deposit: {
     return false;
   }
   return true;
+}
+
+/** בטבלת ההפקדות אפשר לרשום מעביר לכל מילגה, גם ישנה וגם במזומן. */
+export function depositShowsPayerField(deposit: {
+  depositType: DepositType;
+  scholarshipDelivery?: ScholarshipDelivery | null;
+  associationId?: string | null;
+}): boolean {
+  if (deposit.depositType === "kollel_scholarship") return true;
+  return depositAsksForPayer(deposit);
 }
 
 export function detectIncomeKeywords(notes: string | null | undefined): string[] {

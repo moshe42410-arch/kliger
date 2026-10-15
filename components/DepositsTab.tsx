@@ -6,15 +6,10 @@ import {
   Plus,
   Save,
   X,
-  Calendar,
-  CreditCard,
-  User,
   Send,
   Trash2,
   ArrowRight,
-  Building2,
   Edit3,
-  ShieldCheck,
   Search,
   Download,
 } from "lucide-react";
@@ -37,7 +32,7 @@ import {
   defaultResponsibilityFor,
   scholarshipDeliveryLabel,
   depositRequiresPayment,
-  depositAsksForPayer,
+  depositShowsPayerField,
 } from "@/lib/types";
 import { depositDocBucket } from "@/lib/deposit-doc-buckets";
 import { listMonthDocReminders } from "@/lib/deposit-doc-reminders";
@@ -101,7 +96,28 @@ function formatMonthBucket(bucket: string): string {
   });
 }
 
-function StatusSwitch({
+function monthGroups(rows: { deposit: Deposit; reminder: Reminder | null }[]) {
+  const by = new Map<string, { deposit: Deposit; reminder: Reminder | null }[]>();
+  for (const row of rows) {
+    const bucket = row.reminder?.monthBucket || "0000-00";
+    const list = by.get(bucket) || [];
+    list.push(row);
+    by.set(bucket, list);
+  }
+  return [...by.entries()]
+    .sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0))
+    .map(([bucket, list]) => ({ bucket, rows: list }));
+}
+
+function money(n: number): string {
+  return new Intl.NumberFormat("he-IL", {
+    style: "currency",
+    currency: "ILS",
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+
+function DocPill({
   label,
   on,
   tone,
@@ -117,69 +133,45 @@ function StatusSwitch({
       type="button"
       onClick={onClick}
       aria-pressed={on}
-      className={`flex items-center gap-3 rounded-2xl border px-3.5 py-2.5 transition-all text-right min-w-[9.5rem] ${
+      className={`h-7 px-2.5 rounded-full text-[11px] font-bold leading-none transition-colors ${
         on
           ? tone === "gold"
-            ? "border-gold-400/80 bg-gold-50 shadow-sm"
-            : "border-teal-500/40 bg-teal-50 shadow-sm"
-          : "border-navy-950/10 bg-white hover:border-navy-950/20"
+            ? "bg-amber-500 text-white"
+            : "bg-teal-600 text-white"
+          : "bg-slate-100 text-slate-500 hover:bg-slate-200"
       }`}
     >
-      <span
-        className={`toggle pointer-events-none ${on ? "on" : ""} ${
-          tone === "gold" && on ? "gold" : ""
-        }`}
-        aria-hidden
-      />
-      <span className="min-w-0">
-        <span className="block text-sm font-bold text-navy-950 leading-tight">
-          {label}
-        </span>
-        <span className="block text-[11px] text-navy-500 mt-0.5">
-          {on ? "סומן" : "לא סומן"}
-        </span>
-      </span>
+      {label}
     </button>
   );
 }
 
-function PayerNameField({
+function PayerCell({
   depositId,
   reminderId,
   value,
   onSaved,
+  onError,
 }: {
   depositId: string;
   reminderId?: string;
   value: string;
   onSaved: (reminder: Reminder) => void;
+  onError: (message: string) => void;
 }) {
   const saved = (value || "").trim();
   const [text, setText] = useState(saved);
   const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState(!saved);
   const inputRef = useRef<HTMLInputElement>(null);
-  const focusOnEdit = useRef(false);
 
   useEffect(() => {
+    if (document.activeElement === inputRef.current) return;
     setText(value || "");
-    setEditing(!(value || "").trim());
   }, [value, reminderId]);
-
-  useEffect(() => {
-    if (editing && focusOnEdit.current) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-      focusOnEdit.current = false;
-    }
-  }, [editing]);
 
   async function save() {
     const next = text.trim();
-    if (next === saved) {
-      setEditing(!next);
-      return;
-    }
+    if (next === saved) return;
     setSaving(true);
     try {
       let id = reminderId;
@@ -188,7 +180,11 @@ function PayerNameField({
           method: "POST",
         });
         const openedJson = await opened.json().catch(() => ({}));
-        if (!opened.ok || !openedJson.reminder) return;
+        if (!opened.ok || !openedJson.reminder) {
+          onError(openedJson.error || "לא נפתחה שורת חודש");
+          setText(saved);
+          return;
+        }
         id = openedJson.reminder.id as string;
         onSaved(openedJson.reminder as Reminder);
       }
@@ -198,64 +194,40 @@ function PayerNameField({
         body: JSON.stringify({ payerName: next }),
       });
       const j = await res.json().catch(() => ({}));
-      if (res.ok && j.reminder) {
-        onSaved(j.reminder as Reminder);
-        setEditing(!next);
+      if (res.ok && j.reminder) onSaved(j.reminder as Reminder);
+      else {
+        onError(j.error || "שמירת שם המעביר נכשלה");
+        setText(saved);
       }
     } finally {
       setSaving(false);
     }
   }
 
-  if (saved && !editing) {
-    return (
-      <span className="inline-flex items-center gap-1.5">
-        <span className="case-meta" title="שם המעביר">
-          <User size={12} /> מעביר: {saved}
-        </span>
-        <button
-          type="button"
-          className="text-xs font-semibold text-navy-600 hover:text-navy-950"
-          onClick={() => {
-            focusOnEdit.current = true;
-            setText(saved);
-            setEditing(true);
-          }}
-        >
-          תיקון
-        </button>
-      </span>
-    );
-  }
-
   return (
-    <label className="block basis-full max-w-md">
-      <span className="text-xs font-bold text-navy-600">שם המעביר</span>
-      <input
-        ref={inputRef}
-        className="input mt-1"
-        value={text}
-        placeholder="מי העביר את הכסף בחודש הזה"
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => void save()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            (e.currentTarget as HTMLInputElement).blur();
-          }
-          if (e.key === "Escape" && saved) {
-            e.preventDefault();
-            setText(saved);
-            setEditing(false);
-          }
-        }}
-      />
-      <span className="block text-[11px] text-navy-500 mt-1">
-        {saving
-          ? "שומר..."
-          : "נשמר על החודש הזה בלבד. בחודש הבא השדה מתחיל ריק."}
-      </span>
-    </label>
+    <input
+      ref={inputRef}
+      value={text}
+      aria-label="שם המעביר"
+      placeholder="שם מעביר"
+      title={saving ? "שומר..." : "נשמר על החודש הזה"}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => void save()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.currentTarget as HTMLInputElement).blur();
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setText(saved);
+          (e.currentTarget as HTMLInputElement).blur();
+        }
+      }}
+      className={`h-8 w-full min-w-[7.5rem] rounded-lg border bg-white px-2 text-sm text-navy-950 placeholder:text-slate-400 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20 ${
+        saving ? "border-teal-400" : "border-slate-200"
+      }`}
+    />
   );
 }
 
@@ -279,6 +251,12 @@ export function DepositsTab({
     Object.fromEntries(monthReminders.map((r) => [r.id, r]))
   );
   const [nameQuery, setNameQuery] = useState("");
+  const [clientFilter, setClientFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [payerQuery, setPayerQuery] = useState("");
+  const [sortKey, setSortKey] = useState<
+    "date" | "client" | "type" | "association" | "payer" | "amount"
+  >("date");
   const [exportAssociationId, setExportAssociationId] = useState("");
   const [sendingDigest, setSendingDigest] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -286,9 +264,6 @@ export function DepositsTab({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [docTab, setDocTab] = useState<
-    "pending" | "done" | "paid" | "archive"
-  >("pending");
 
   const clientMap = useMemo(() => {
     const m: Record<string, Client> = {};
@@ -304,14 +279,9 @@ export function DepositsTab({
 
   useEffect(() => {
     const tab = searchParams?.get("tab");
-    if (
-      tab === "pending" ||
-      tab === "done" ||
-      tab === "paid" ||
-      tab === "archive"
-    ) {
-      setDocTab(tab);
-    }
+    if (!tab) return;
+    const el = document.getElementById(`deposit-section-${tab}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [searchParams]);
 
   useEffect(() => {
@@ -622,31 +592,121 @@ export function DepositsTab({
     return rows;
   }, [deposits, docs, clientMap]);
 
-  const namedRows = useMemo(() => {
+  const visibleRows = useMemo(() => {
     const q = nameQuery.trim().toLowerCase();
-    if (!q) return monthRows;
-    return monthRows.filter((row) => {
-      const name = clientMap[row.deposit.clientId]?.name || "";
-      return name.toLowerCase().includes(q);
+    const pq = payerQuery.trim().toLowerCase();
+    const filtered = monthRows.filter((row) => {
+      const clientName = clientMap[row.deposit.clientId]?.name || "";
+      const assocName = row.deposit.associationId
+        ? associationMap[row.deposit.associationId]?.name || ""
+        : "";
+      const payer = row.reminder?.payerName || "";
+      const typeLabel = depositTypeLabel[row.deposit.depositType];
+      if (clientFilter && row.deposit.clientId !== clientFilter) return false;
+      if (typeFilter && row.deposit.depositType !== typeFilter) return false;
+      if (
+        exportAssociationId &&
+        row.deposit.associationId !== exportAssociationId
+      ) {
+        return false;
+      }
+      if (pq && !payer.toLowerCase().includes(pq)) return false;
+      if (q) {
+        const hay = `${clientName} ${assocName} ${payer} ${typeLabel}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
     });
-  }, [monthRows, nameQuery, clientMap]);
+    const sortValue = (row: (typeof filtered)[number]) => {
+      switch (sortKey) {
+        case "client":
+          return clientMap[row.deposit.clientId]?.name || "";
+        case "type":
+          return depositTypeLabel[row.deposit.depositType];
+        case "association":
+          return row.deposit.associationId
+            ? associationMap[row.deposit.associationId]?.name || ""
+            : "";
+        case "payer":
+          return row.reminder?.payerName || "";
+        case "amount":
+          return String(row.deposit.amount).padStart(12, "0");
+        default:
+          return row.reminder?.targetDate || "0000";
+      }
+    };
+    filtered.sort((a, b) => {
+      const av = sortValue(a);
+      const bv = sortValue(b);
+      if (av === bv) {
+        const an = clientMap[a.deposit.clientId]?.name || "";
+        const bn = clientMap[b.deposit.clientId]?.name || "";
+        return an.localeCompare(bn, "he");
+      }
+      if (sortKey === "date" || sortKey === "amount") return av < bv ? 1 : -1;
+      return av.localeCompare(bv, "he");
+    });
+    return filtered;
+  }, [
+    monthRows,
+    nameQuery,
+    payerQuery,
+    clientFilter,
+    typeFilter,
+    exportAssociationId,
+    sortKey,
+    clientMap,
+    associationMap,
+  ]);
 
-  const tabCounts = useMemo(() => {
-    const c = { pending: 0, done: 0, paid: 0, archive: 0 };
-    for (const row of namedRows) {
-      c[docBucket(row.deposit, row.reminder)]++;
-    }
-    return c;
-  }, [namedRows]);
-
-  const filteredRows = useMemo(() => {
-    return namedRows.filter(
-      (row) => docBucket(row.deposit, row.reminder) === docTab
-    );
-  }, [namedRows, docTab]);
+  const sections = useMemo(() => {
+    const order = [
+      {
+        key: "pending",
+        title: "ממתינות",
+        hint: "עדיין לא הושלם",
+        group: false,
+      },
+      {
+        key: "done",
+        title: "בוצעו",
+        hint: "בוצע, וממתין לשולם",
+        group: false,
+      },
+      {
+        key: "paid",
+        title: "שולמו",
+        hint: "שולם, וממתין לבוצע",
+        group: false,
+      },
+      {
+        key: "archive",
+        title: "ארכיון",
+        hint: "הושלמו, מחולק לפי חודש",
+        group: true,
+      },
+      {
+        key: "inactive",
+        title: "כבויות",
+        hint: "הפקדה שכיבית. לא נפתח לה חודש חדש",
+        group: true,
+      },
+    ] as const;
+    return order
+      .map((section) => ({
+        ...section,
+        rows: visibleRows.filter((row) =>
+          section.key === "inactive"
+            ? !row.deposit.active
+            : row.deposit.active &&
+              docBucket(row.deposit, row.reminder) === section.key
+        ),
+      }))
+      .filter((section) => section.rows.length > 0);
+  }, [visibleRows]);
 
   return (
-    <div className="max-w-6xl mx-auto animate-fade-in">
+    <div className="max-w-[1280px] mx-auto animate-fade-in">
       {toast && (
         <div
           className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl font-bold text-white"
@@ -659,27 +719,73 @@ export function DepositsTab({
           {toast}
         </div>
       )}
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="section-title mb-2">הפקדות</h1>
-            <p className="section-subtitle">
-              ניהול הפקדות חוזרות, תיעוד חודשי, ותזכורות ליועץ וללקוח
-            </p>
-          </div>
-          <button
-            className="btn-primary shrink-0 whitespace-nowrap px-6"
-            onClick={openNew}
-          >
-            <Plus size={18} /> הוספת הפקדה
-          </button>
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div className="min-w-0">
+          <h1 className="section-title mb-1">הפקדות</h1>
+          <p className="section-subtitle">
+            שורה לכל חודש. שם מעביר נרשם גם על מילגות שכבר עברו.
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <button
+          className="btn-primary shrink-0 whitespace-nowrap px-5"
+          onClick={openNew}
+        >
+          <Plus size={18} /> הוספת הפקדה
+        </button>
+      </div>
+
+      <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-6">
+          <div className="relative xl:col-span-2">
+            <Search
+              size={15}
+              className="absolute top-1/2 -translate-y-1/2 right-3 text-slate-400 pointer-events-none"
+            />
+            <input
+              className="input !py-2 pr-9 text-sm"
+              value={nameQuery}
+              onChange={(e) => setNameQuery(e.target.value)}
+              placeholder="חיפוש לקוח, סוג, עמותה או מעביר"
+            />
+          </div>
           <select
-            className="select"
+            className="select !py-2 text-sm"
+            value={clientFilter}
+            onChange={(e) => setClientFilter(e.target.value)}
+            aria-label="סינון לפי לקוח"
+          >
+            <option value="">כל הלקוחות</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="select !py-2 text-sm"
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            aria-label="סינון לפי סוג"
+          >
+            <option value="">כל הסוגים</option>
+            {(
+              [
+                "salary_slip",
+                "kollel_scholarship",
+                "private_transfer",
+                "cash_check",
+              ] as DepositType[]
+            ).map((t) => (
+              <option key={t} value={t}>
+                {depositTypeLabel[t]}
+              </option>
+            ))}
+          </select>
+          <select
+            className="select !py-2 text-sm"
             value={exportAssociationId}
             onChange={(e) => setExportAssociationId(e.target.value)}
-            aria-label="עמותה לייצוא"
+            aria-label="סינון לפי עמותה"
           >
             <option value="">כל העמותות</option>
             {associations.map((a) => (
@@ -688,6 +794,30 @@ export function DepositsTab({
               </option>
             ))}
           </select>
+          <select
+            className="select !py-2 text-sm"
+            value={sortKey}
+            onChange={(e) =>
+              setSortKey(e.target.value as typeof sortKey)
+            }
+            aria-label="מיון"
+          >
+            <option value="date">מיון לפי תאריך</option>
+            <option value="client">מיון לפי לקוח</option>
+            <option value="type">מיון לפי סוג</option>
+            <option value="association">מיון לפי עמותה</option>
+            <option value="payer">מיון לפי מעביר</option>
+            <option value="amount">מיון לפי סכום</option>
+          </select>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <input
+            className="input !py-2 text-sm max-w-xs"
+            value={payerQuery}
+            onChange={(e) => setPayerQuery(e.target.value)}
+            placeholder="סינון לפי שם מעביר"
+            aria-label="סינון לפי שם מעביר"
+          />
           <a
             className="btn-secondary text-sm justify-center whitespace-nowrap"
             href={`/api/deposits/payers-export${
@@ -696,61 +826,18 @@ export function DepositsTab({
                 : ""
             }`}
           >
-            <Download size={16} /> אקסל מעבירים
+            <Download size={16} /> אקסל מפורט
           </a>
           <button
             className="btn-secondary text-sm justify-center shrink-0 whitespace-nowrap"
             onClick={() => void sendAssociationDigest()}
             disabled={sendingDigest}
-            title="מייל אחד לעמותה שנבחרה, עם כל ההפקדות שממתינות לטיפול שלה"
+            title="מייל אחד לעמותה שנבחרה בסינון"
           >
             <Send size={16} />
             {sendingDigest ? "שולח..." : "שלח התראה לעמותה"}
           </button>
         </div>
-      </div>
-
-      <div className="relative mb-4">
-        <Search
-          size={16}
-          className="absolute top-1/2 -translate-y-1/2 right-3 text-navy-400 pointer-events-none"
-        />
-        <input
-          className="input pr-10"
-          value={nameQuery}
-          onChange={(e) => setNameQuery(e.target.value)}
-          placeholder="חיפוש לפי שם לקוח"
-        />
-      </div>
-
-      <div
-        className="tabs-scroll"
-        role="tablist"
-        aria-label="סינון לפי תיעוד"
-      >
-        {(
-          [
-            { key: "pending" as const, label: "ממתינות" },
-            { key: "done" as const, label: "בוצעו" },
-            { key: "paid" as const, label: "שולמו" },
-            { key: "archive" as const, label: "ארכיון" },
-          ]
-        ).map((t) => {
-          const active = docTab === t.key;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setDocTab(t.key)}
-              className={`tab-filter ${active ? "tab-filter-active" : ""}`}
-            >
-              {t.label}{" "}
-              <span className="tab-filter-count">({tabCounts[t.key]})</span>
-            </button>
-          );
-        })}
       </div>
 
       {clients.length === 0 && (
@@ -762,188 +849,230 @@ export function DepositsTab({
         </div>
       )}
 
-      {filteredRows.length === 0 ? (
-        <div className="card text-center py-16">
-          <div className="inline-flex p-5 rounded-2xl bg-navy-50 border border-navy-100 mb-4">
-            <CreditCard size={32} className="text-navy-700" />
-          </div>
-          <h3 className="text-xl font-heading font-bold text-navy-950 mb-2">
-            אין הפקדות בלשונית זו
+      {visibleRows.length === 0 ? (
+        <div className="rounded-2xl border border-slate-200 bg-white text-center py-14">
+          <h3 className="text-lg font-heading font-bold text-navy-950 mb-1">
+            אין שורות להצגה
           </h3>
-          <p className="text-navy-700">
-            {nameQuery.trim()
-              ? "אין הפקדות שתואמות לחיפוש"
+          <p className="text-sm text-slate-500">
+            {nameQuery.trim() || payerQuery.trim() || clientFilter || typeFilter || exportAssociationId
+              ? "אין הפקדות שתואמות לסינון"
               : deposits.length === 0
                 ? "הוסף הפקדה ראשונה כדי להתחיל"
-                : "כשתסמן בוצע / שולם — השורה תעבור לכאן"}
+                : "כשתסמן בוצע ושולם, השורה תרד לארכיון"}
           </p>
         </div>
       ) : (
-        <div className="grid gap-4">
-          {filteredRows.map(({ deposit: d, reminder: rem }) => {
-            const client = clientMap[d.clientId];
-            const assoc = d.associationId ? associationMap[d.associationId] : null;
-            const meta = reminderMeta[d.id];
-            const needsPay = depositRequiresPayment(d.depositType);
-            const actionDone = !!rem?.actionDoneAt;
-            const paidDone = !!(rem?.paymentDoneAt || rem?.paidAt);
+        <div className="space-y-4">
+          {sections.map((section) => {
+            const groups = section.group
+              ? monthGroups(section.rows)
+              : [{ bucket: "", rows: section.rows }];
             return (
-              <div key={rem ? rem.id : d.id} className="card">
-                <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-2">
-                      {rem?.monthBucket && (
-                        <span className="chip chip-gold">
-                          <Calendar size={12} /> {formatMonthBucket(rem.monthBucket)}
-                        </span>
-                      )}
-                      <span className="chip">
-                        <User size={12} /> {client?.name || "לקוח לא ידוע"}
-                      </span>
-                      <span className="chip chip-blue">
-                        {depositTypeLabel[d.depositType]}
-                      </span>
-                      <span
-                        className={`chip ${
-                          d.responsibility === "advisor"
-                            ? "chip-gold"
-                            : "chip-purple"
-                        }`}
-                      >
-                        <ShieldCheck size={12} />
-                        {responsibilityLabel[d.responsibility]}
-                      </span>
-                      <span className="chip chip-amber">
-                        תזכורת ל: {reminderRecipientLabel[d.reminderRecipient]}
-                      </span>
-                      {assoc && (
-                        <span className="case-meta">
-                          <Building2 size={12} /> {assoc.name}
-                        </span>
-                      )}
-                      {depositAsksForPayer(d) && (
-                        <PayerNameField
-                          depositId={d.id}
-                          reminderId={rem?.id}
-                          value={rem?.payerName || ""}
-                          onSaved={(saved) =>
-                            setDocs((prev) => ({ ...prev, [saved.id]: saved }))
-                          }
-                        />
-                      )}
-                      {!d.active && <span className="chip chip-red">כבוי</span>}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-4 text-sm text-navy-700">
-                      <span className="text-2xl font-heading font-black gradient-text-gold">
-                        {new Intl.NumberFormat("he-IL", {
-                          style: "currency",
-                          currency: "ILS",
-                          maximumFractionDigits: 0,
-                        }).format(d.amount)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar size={14} className="text-teal-600" />
-                        יום {d.dayOfMonth} בחודש · {d.daysBeforeReminder} ימים
-                        לפני
-                      </span>
-                      <span className="text-navy-500 text-xs">
-                        תקופה: {d.startDate}
-                        {d.endDate ? ` → ${d.endDate}` : " → פתוח"}
-                      </span>
-                      {rem && (
-                        <span className="text-navy-500 text-xs">
-                          יעד החודש:{" "}
-                          {new Date(rem.targetDate).toLocaleDateString("he-IL")}
-                        </span>
-                      )}
-                      {meta && meta.sends > 0 && (
-                        <span className="text-navy-500 text-xs">
-                          נשלחו {meta.sends} תזכורות
-                        </span>
-                      )}
-                    </div>
-                    {d.notes && (
-                      <div className="mt-2 text-xs text-navy-500 whitespace-pre-wrap">
-                        {d.notes}
-                      </div>
-                    )}
-
-                    <div className="mt-4">
-                      <p className="text-xs font-bold tracking-wide text-navy-600 mb-2">
-                        תיעוד החודש
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        <StatusSwitch
-                          label="בוצע"
-                          tone="teal"
-                          on={actionDone}
-                          onClick={() =>
-                            void setDocFlag(d.id, rem?.id, "action", !actionDone)
-                          }
-                        />
-                        {needsPay && (
-                          <StatusSwitch
-                            label="שולם"
-                            tone="gold"
-                            on={paidDone}
-                            onClick={() =>
-                              void setDocFlag(d.id, rem?.id, "paid", !paidDone)
-                            }
-                          />
+              <section
+                key={section.key}
+                id={`deposit-section-${section.key}`}
+                className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+              >
+                <header className="flex items-center justify-between gap-3 bg-navy-950 px-4 py-2 text-white">
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-bold">{section.title}</h2>
+                    <p className="text-[11px] text-white/70">{section.hint}</p>
+                  </div>
+                  <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-xs font-bold">
+                    {section.rows.length}
+                  </span>
+                </header>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[980px] border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 text-[11px] font-semibold text-slate-500">
+                        <th className="px-3 py-2 text-right font-semibold">חודש</th>
+                        <th className="px-3 py-2 text-right font-semibold">לקוח</th>
+                        <th className="px-3 py-2 text-right font-semibold">סוג</th>
+                        <th className="px-3 py-2 text-right font-semibold">עמותה</th>
+                        <th className="px-3 py-2 text-right font-semibold">מעביר</th>
+                        <th className="px-3 py-2 text-right font-semibold">סכום</th>
+                        <th className="px-3 py-2 text-right font-semibold">יעד</th>
+                        <th className="px-3 py-2 text-right font-semibold">סטטוס</th>
+                        <th className="px-3 py-2 text-right font-semibold">פעולות</th>
+                      </tr>
+                    </thead>
+                    {groups.map((group) => (
+                      <tbody key={`${section.key}-${group.bucket || "all"}`}>
+                        {section.group && (
+                          <tr className="bg-slate-100/80">
+                            <td
+                              colSpan={9}
+                              className="px-3 py-1.5 text-xs font-bold text-navy-800"
+                            >
+                              {group.bucket === "0000-00"
+                                ? "בלי חודש"
+                                : formatMonthBucket(group.bucket)}
+                            </td>
+                          </tr>
                         )}
-                      </div>
-                      {!rem && (
-                        <p className="text-xs text-navy-500 mt-2">
-                          שורת החודש תיפתח ב-1 לחודש. אפשר לסמן כבר עכשיו —
-                          התיעוד ייפתח לחודש הנוכחי.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap shrink-0">
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                      <span className="text-xs text-navy-600 font-medium">
-                        {d.active ? "פעיל" : "כבוי"}
-                      </span>
-                      <span
-                        className={`toggle ${d.active ? "on" : ""}`}
-                        onClick={() => toggleActive(d)}
-                      />
-                    </label>
-                    <button
-                      className="btn-secondary text-sm"
-                      onClick={() => sendNow(d, "advisor", rem?.id)}
-                      disabled={!d.active}
-                      title="שליחה מיידית ליועץ — ללא הגבלה"
-                    >
-                      <Send size={14} /> שלח ליועץ
-                    </button>
-                    <button
-                      className="btn-secondary text-sm"
-                      onClick={() => sendNow(d, "client", rem?.id)}
-                      disabled={!d.active}
-                      title="שליחה מיידית ללקוח — ללא הגבלה"
-                    >
-                      <Send size={14} /> שלח ללקוח
-                    </button>
-                    <button
-                      className="btn-ghost text-sm"
-                      onClick={() => openEdit(d)}
-                      title="עריכת ההפקדה"
-                    >
-                      <Edit3 size={14} /> עריכה
-                    </button>
-                    <button className="btn-danger" onClick={() => remove(d.id)}>
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+                          {group.rows.map(({ deposit: d, reminder: rem }) => {
+                            const client = clientMap[d.clientId];
+                            const assoc = d.associationId
+                              ? associationMap[d.associationId]
+                              : null;
+                            const meta = reminderMeta[d.id];
+                            const needsPay = depositRequiresPayment(d.depositType);
+                            const actionDone = !!rem?.actionDoneAt;
+                            const paidDone = !!(rem?.paymentDoneAt || rem?.paidAt);
+                            const typeText =
+                              d.depositType === "kollel_scholarship"
+                                ? `${depositTypeShortLabel[d.depositType]} · ${scholarshipDeliveryLabel[d.scholarshipDelivery || "cash"]}`
+                                : depositTypeShortLabel[d.depositType];
+                            return (
+                              <tr
+                                key={rem ? rem.id : d.id}
+                                className="border-t border-slate-100 hover:bg-slate-50/80"
+                              >
+                                <td
+                                  className="px-3 py-1.5 whitespace-nowrap text-slate-600"
+                                  title={
+                                    meta && meta.sends > 0
+                                      ? `נשלחו ${meta.sends} תזכורות`
+                                      : undefined
+                                  }
+                                >
+                                  {rem?.monthBucket
+                                    ? formatMonthBucket(rem.monthBucket)
+                                    : "—"}
+                                </td>
+                                <td
+                                  className="px-3 py-1.5 font-semibold text-navy-950 whitespace-nowrap"
+                                  title={d.notes || undefined}
+                                >
+                                  {client?.name || "לקוח לא ידוע"}
+                                </td>
+                                <td className="px-3 py-1.5 whitespace-nowrap text-slate-700">
+                                  {typeText}
+                                </td>
+                                <td className="px-3 py-1.5 whitespace-nowrap text-slate-600">
+                                  {assoc?.name || "—"}
+                                </td>
+                                <td className="px-3 py-1.5">
+                                  {depositShowsPayerField(d) ? (
+                                    <PayerCell
+                                      depositId={d.id}
+                                      reminderId={rem?.id}
+                                      value={rem?.payerName || ""}
+                                      onSaved={(saved) =>
+                                        setDocs((prev) => ({
+                                          ...prev,
+                                          [saved.id]: saved,
+                                        }))
+                                      }
+                                      onError={(message) => setToast(message)}
+                                    />
+                                  ) : (
+                                    <span className="text-slate-300">—</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-1.5 whitespace-nowrap font-semibold text-navy-950">
+                                  {money(d.amount)}
+                                </td>
+                                <td className="px-3 py-1.5 whitespace-nowrap text-slate-600">
+                                  {rem
+                                    ? new Date(rem.targetDate).toLocaleDateString("he-IL")
+                                    : `יום ${d.dayOfMonth}`}
+                                </td>
+                                <td className="px-3 py-1.5">
+                                  <div className="flex items-center gap-1">
+                                    <DocPill
+                                      label={actionDone ? "בוצע" : "לא בוצע"}
+                                      tone="teal"
+                                      on={actionDone}
+                                      onClick={() =>
+                                        void setDocFlag(
+                                          d.id,
+                                          rem?.id,
+                                          "action",
+                                          !actionDone
+                                        )
+                                      }
+                                    />
+                                    {needsPay && (
+                                      <DocPill
+                                        label={paidDone ? "שולם" : "לא שולם"}
+                                        tone="gold"
+                                        on={paidDone}
+                                        onClick={() =>
+                                          void setDocFlag(
+                                            d.id,
+                                            rem?.id,
+                                            "paid",
+                                            !paidDone
+                                          )
+                                        }
+                                      />
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-1.5">
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      className={`h-7 rounded-full px-2 text-[11px] font-bold ${
+                                        d.active
+                                          ? "bg-teal-50 text-teal-800"
+                                          : "bg-slate-100 text-slate-500"
+                                      }`}
+                                      onClick={() => toggleActive(d)}
+                                    >
+                                      {d.active ? "פעיל" : "כבוי"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-30"
+                                      onClick={() => sendNow(d, "advisor", rem?.id)}
+                                      disabled={!d.active}
+                                      title="שליחה ליועץ"
+                                    >
+                                      <Send size={13} /> יועץ
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-30"
+                                      onClick={() => sendNow(d, "client", rem?.id)}
+                                      disabled={!d.active}
+                                      title="שליחה ללקוח"
+                                    >
+                                      <Send size={13} /> לקוח
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100"
+                                      onClick={() => openEdit(d)}
+                                      title="עריכה"
+                                    >
+                                      <Edit3 size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-red-500 hover:bg-red-50"
+                                      onClick={() => remove(d.id)}
+                                      title="מחיקה"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    ))}
+                  </table>
                 </div>
-              </div>
+              </section>
             );
           })}
         </div>
       )}
-
       {showForm && (
         <div className="modal-backdrop" onClick={() => setShowForm(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>

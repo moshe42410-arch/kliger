@@ -5,7 +5,9 @@ import { AuthError, getCurrentOwnerId } from "@/lib/auth";
 import {
   depositRequiresPayment,
   depositTypeLabel,
+  scholarshipDeliveryLabel,
   type DepositType,
+  type ScholarshipDelivery,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -48,18 +50,21 @@ export async function GET(req: NextRequest) {
             r.action_done_at,
             r.payment_done_at,
             r.paid_at,
+            r.phase,
             c.name AS client_name,
             d.amount,
             d.deposit_type,
+            d.scholarship_delivery,
+            d.active,
             a.name AS association_name
           FROM reminders r
           JOIN deposits d ON d.id = r.deposit_id
           JOIN clients c ON c.id = r.client_id
-          JOIN associations a ON a.id = d.association_id
+          LEFT JOIN associations a ON a.id = d.association_id
           WHERE r.owner_id = ${ownerId}
             AND r.phase = 'primary'
             AND d.association_id = ${associationId}
-          ORDER BY a.name ASC, r.target_date DESC, c.name ASC
+          ORDER BY r.target_date DESC, c.name ASC
         `
       : await sql`
           SELECT
@@ -69,18 +74,20 @@ export async function GET(req: NextRequest) {
             r.action_done_at,
             r.payment_done_at,
             r.paid_at,
+            r.phase,
             c.name AS client_name,
             d.amount,
             d.deposit_type,
+            d.scholarship_delivery,
+            d.active,
             a.name AS association_name
           FROM reminders r
           JOIN deposits d ON d.id = r.deposit_id
           JOIN clients c ON c.id = r.client_id
-          JOIN associations a ON a.id = d.association_id
+          LEFT JOIN associations a ON a.id = d.association_id
           WHERE r.owner_id = ${ownerId}
             AND r.phase = 'primary'
-            AND d.association_id IS NOT NULL
-          ORDER BY a.name ASC, r.target_date DESC, c.name ASC
+          ORDER BY r.target_date DESC, c.name ASC
         `;
 
     const header = [
@@ -91,9 +98,11 @@ export async function GET(req: NextRequest) {
       "שם המקבל",
       "סכום",
       "סוג",
+      "אופן",
       "תאריך יעד",
       "בוצע",
       "שולם",
+      "פעיל",
     ];
     const data = (rows as Array<{
       month_bucket: string;
@@ -105,22 +114,32 @@ export async function GET(req: NextRequest) {
       client_name: string;
       amount: number;
       deposit_type: string;
-      association_name: string;
+      scholarship_delivery: string | null;
+      active: number | boolean;
+      association_name: string | null;
     }>).map((r) => {
       const type = r.deposit_type as DepositType;
       const paid = !!(r.payment_done_at || r.paid_at);
       const needsPay = depositRequiresPayment(type);
+      const delivery =
+        type === "kollel_scholarship"
+          ? scholarshipDeliveryLabel[
+              (r.scholarship_delivery || "cash") as ScholarshipDelivery
+            ]
+          : "";
       return [
-        monthLabel(r.month_bucket),
+        monthLabel(r.month_bucket || (r.target_date || "").slice(0, 7)),
         paid ? monthFromTimestamp(r.payment_done_at || r.paid_at) : "",
         r.association_name || "",
         r.payer_name || "",
         r.client_name || "",
         Number(r.amount) || 0,
         depositTypeLabel[type] || r.deposit_type,
+        delivery,
         r.target_date || "",
         yesNo(!!r.action_done_at),
         needsPay ? yesNo(paid) : "—",
+        yesNo(!!r.active),
       ];
     });
 
@@ -132,8 +151,10 @@ export async function GET(req: NextRequest) {
       { wch: 24 },
       { wch: 24 },
       { wch: 12 },
-      { wch: 22 },
+      { wch: 28 },
+      { wch: 12 },
       { wch: 14 },
+      { wch: 10 },
       { wch: 10 },
       { wch: 10 },
     ];

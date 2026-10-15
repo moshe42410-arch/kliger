@@ -115,9 +115,10 @@ export default async function Home() {
   let activeDeposits = 0;
   for (const d of deposits) {
     if (d.active) activeDeposits++;
-    if (!depositsWithMonth.has(d.id)) tabCounts.pending++;
+    if (d.active && !depositsWithMonth.has(d.id)) tabCounts.pending++;
   }
   for (const row of monthRows) {
+    if (!row.deposit.active) continue;
     tabCounts[depositDocBucket(row.deposit.depositType, row.reminder)]++;
   }
 
@@ -138,6 +139,7 @@ export default async function Home() {
   let scholarshipPaidUndone = 0;
   for (const row of monthRows) {
     const d = row.deposit;
+    if (!d.active) continue;
     const b = depositDocBucket(d.depositType, row.reminder);
     if (d.depositType === "salary_slip") {
       if (b === "done") salaryDoneUnpaid++;

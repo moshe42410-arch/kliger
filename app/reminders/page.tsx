@@ -70,16 +70,19 @@ export default async function RemindersPage() {
   for (const row of reminderRows as ReminderRow[]) {
     const r = parseReminder(row);
     const dep = depositById[r.depositId];
-    if (dep) {
-      const next = deriveReminderStatusFromDocs(r, dep.depositType);
-      if (next !== r.status) {
-        await sql`
-          UPDATE reminders
-          SET status = ${next}, updated_at = ${nowIso()}
-          WHERE id = ${r.id}
-        `;
-        r.status = next;
-      }
+    if (!dep || !dep.active || r.phase !== "primary") continue;
+    const monthKey = `${r.depositId}:${r.monthBucket || r.targetDate.slice(0, 7)}`;
+    if (reminders.some((existing) => `${existing.depositId}:${existing.monthBucket || existing.targetDate.slice(0, 7)}` === monthKey)) {
+      continue;
+    }
+    const next = deriveReminderStatusFromDocs(r, dep.depositType);
+    if (next !== r.status) {
+      await sql`
+        UPDATE reminders
+        SET status = ${next}, updated_at = ${nowIso()}
+        WHERE id = ${r.id}
+      `;
+      r.status = next;
     }
     reminders.push(r);
   }
