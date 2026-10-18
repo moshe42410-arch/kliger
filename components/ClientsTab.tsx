@@ -4,15 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
-  Mail,
-  Phone,
   Trash2,
   Edit3,
   X,
   Save,
   ArrowRight,
-  Bell,
-  Landmark,
   Search,
   Upload,
   Download,
@@ -23,7 +19,6 @@ import {
   BANK_OPTIONS,
   CASE_TYPES,
   caseTypeLabel,
-  reminderChannelLabel,
 } from "@/lib/types";
 
 interface ClientFormState {
@@ -325,7 +320,7 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
   }
 
   return (
-    <div className="max-w-6xl mx-auto animate-fade-in">
+    <div className="page-shell animate-fade-in">
       {importToast && (
         <div
           className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl font-bold text-white max-w-lg text-center"
@@ -338,9 +333,9 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
           {importToast}
         </div>
       )}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
         <div>
-          <h1 className="section-title mb-2">לקוחות</h1>
+          <h1 className="section-title mb-1">לקוחות</h1>
           <p className="section-subtitle">ניהול תיקי הלקוחות של המשרד</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -380,7 +375,7 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
       </div>
 
       {clients.length > 0 && (
-        <div className="relative mb-6">
+        <div className="relative mb-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
           <Search
             size={18}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-navy-500 pointer-events-none"
@@ -422,113 +417,87 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
           <p className="text-navy-700">נסה מילת חיפוש אחרת</p>
         </div>
       ) : (
-        <div className="grid gap-2">
-          {filteredClients.map((c) => (
-            <div
-              key={c.id}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 flex flex-col md:flex-row gap-2 md:items-center justify-between cursor-pointer hover:border-teal-400/60 transition-colors"
-              onClick={() => router.push(`/clients/${c.id}`)}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-wrap items-center gap-3 mb-2">
-                  <h3 className="text-base font-bold text-navy-950">
-                    {c.name}
-                  </h3>
-                  {c.caseType && (
-                    <span className="case-meta">
-                      {caseTypeLabel[c.caseType]}
-                    </span>
-                  )}
-                  {c.requiredAmount != null && (
-                    <span className="text-sm font-semibold text-navy-900 tabular-nums">
-                      {formatILS(c.requiredAmount)}
-                    </span>
-                  )}
-                  {(() => {
-                    const pct = financingPercent(
-                      c.requiredAmount,
-                      c.propertyValue,
-                      c.existingMortgage
-                    );
-                    if (pct == null) return null;
-                    const br = financingBreakdown(
-                      c.requiredAmount,
-                      c.propertyValue,
-                      c.existingMortgage
-                    );
-                    return (
-                      <span
-                        className="case-meta"
-                        title={[
-                          `מבוקש ${formatILS(c.requiredAmount)}`,
-                          c.existingMortgage != null
-                            ? `קיים ${formatILS(c.existingMortgage)}`
-                            : null,
-                          `שווי ${formatILS(c.propertyValue)}`,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      >
-                        מימון {formatPercent(pct)}
-                        {br.existingPct != null && br.requestedPct != null
-                          ? ` (${formatPercent(br.requestedPct)}+${formatPercent(br.existingPct)})`
-                          : ""}
-                      </span>
-                    );
-                  })()}
-                  {c.spouseName && (
-                    <span className="case-meta">בן/בת זוג: {c.spouseName}</span>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-navy-700">
-                  {c.bank && (
-                    <div className="flex items-center gap-2">
-                      <Landmark size={14} className="text-teal-600" />
-                      {c.bank}
-                    </div>
-                  )}
-                  {c.emails.length > 0 && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Mail size={14} className="text-teal-600" />
-                      {c.emails.map((e, i) => (
-                        <span key={i} dir="ltr">
-                          {e}
-                          {i < c.emails.length - 1 ? "," : ""}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {c.phones.length > 0 && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Phone size={14} className="text-teal-600" />
-                      {c.phones.map((p, i) => (
-                        <span key={i} dir="ltr">
-                          {p}
-                          {i < c.phones.length - 1 ? "," : ""}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <Bell size={12} className="text-navy-500" />
-                    {reminderChannelLabel[c.reminderChannel]}
-                  </div>
-                </div>
-              </div>
-              <div
-                className="flex gap-2 shrink-0"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button className="btn-ghost" onClick={() => openEdit(c)}>
-                  <Edit3 size={16} /> עריכה
-                </button>
-                <button className="btn-danger" onClick={() => remove(c.id)}>
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        <section className="data-shell">
+          <header className="data-shell-head">
+            <h2 className="data-shell-title">
+              <span className="h-2.5 w-2.5 rounded-full bg-navy-800" />
+              לקוחות
+            </h2>
+            <span className="data-count">{filteredClients.length}</span>
+          </header>
+          <div className="overflow-x-auto">
+            <table className="data-table min-w-[860px]">
+              <thead>
+                <tr>
+                  <th>לקוח</th>
+                  <th>תיק</th>
+                  <th>סכום</th>
+                  <th>מימון</th>
+                  <th>בנק</th>
+                  <th>קשר</th>
+                  <th>פעולות</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredClients.map((c) => {
+                  const pct = financingPercent(
+                    c.requiredAmount,
+                    c.propertyValue,
+                    c.existingMortgage
+                  );
+                  return (
+                    <tr
+                      key={c.id}
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/clients/${c.id}`)}
+                    >
+                      <td className="whitespace-nowrap font-semibold text-navy-950">
+                        {c.name}
+                        {c.spouseName ? (
+                          <div className="text-xs font-normal text-slate-500">
+                            בן/בת זוג: {c.spouseName}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="whitespace-nowrap text-slate-600">
+                        {c.caseType ? caseTypeLabel[c.caseType] : "—"}
+                      </td>
+                      <td className="whitespace-nowrap font-semibold text-navy-950">
+                        {c.requiredAmount != null ? formatILS(c.requiredAmount) : "—"}
+                      </td>
+                      <td className="whitespace-nowrap text-slate-600">
+                        {pct == null ? "—" : formatPercent(pct)}
+                      </td>
+                      <td className="whitespace-nowrap text-slate-600">
+                        {c.bank || "—"}
+                      </td>
+                      <td className="text-slate-600">
+                        <div className="flex flex-col gap-0.5 text-xs" dir="ltr">
+                          <span>{c.emails[0] || ""}</span>
+                          <span>{c.phones[0] || ""}</span>
+                        </div>
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1">
+                          <button className="row-btn" onClick={() => openEdit(c)}>
+                            <Edit3 size={14} /> עריכה
+                          </button>
+                          <button
+                            className="row-btn danger"
+                            onClick={() => remove(c.id)}
+                            title="מחיקה"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {showForm && (

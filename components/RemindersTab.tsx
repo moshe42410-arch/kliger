@@ -54,15 +54,6 @@ const STATUS_TABS: { key: ReminderStatus; chip: string }[] = [
   { key: "carried_over", chip: "chip-red" },
 ];
 
-const STATUS_ACCENT: Record<ReminderStatus, string> = {
-  waiting_client: "bg-amber-400",
-  waiting_advisor: "bg-purple-400",
-  waiting_association: "bg-blue-400",
-  snoozed: "bg-gold-400",
-  resolved: "bg-emerald-400",
-  carried_over: "bg-red-400",
-};
-
 const STATUS_MOVE_OPTIONS: {
   key: ReminderStatus;
   icon: typeof Clock;
@@ -457,7 +448,7 @@ export function RemindersTab({
   }
 
   return (
-    <div className="max-w-6xl mx-auto animate-fade-in-up">
+    <div className="page-shell animate-fade-in-up">
       {toast && (
         <div
           className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl font-bold text-white animate-slide-down"
@@ -473,7 +464,7 @@ export function RemindersTab({
         </div>
       )}
       <div className="mb-4">
-        <h1 className="section-title mb-2">תזכורות</h1>
+        <h1 className="section-title mb-1">תזכורות</h1>
         <p className="section-subtitle">
           הרישום החודשי, הסינון ושם המעביר נמצאים בהפקדות. כאן נשארות תזכורות
           פעילות של החודש: שיחה, קבצים והמתנה. הפקדה כבויה עוברת לארכיון
@@ -512,26 +503,32 @@ export function RemindersTab({
           description={`הקטגוריה "${reminderStatusLabel[activeTab]}" ריקה כרגע.`}
         />
       ) : (
-        <div className="grid gap-2">
+        <section className="data-shell">
+          <header className="data-shell-head">
+            <h2 className="data-shell-title">
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+              {reminderStatusLabel[activeTab]}
+            </h2>
+            <span className="data-count">{filtered.length}</span>
+          </header>
+          <div className="overflow-x-auto">
+          <div className="min-w-[860px]">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] bg-navy-950 text-[11px] font-semibold text-white">
+            <div className="px-3 py-2">תזכורת</div>
+            <div className="px-3 py-2">פעולות</div>
+          </div>
           {filtered.map((r) => {
             const client = clientMap[r.clientId];
             const deposit = depositMap[r.depositId];
             const depositLabel = deposit
               ? depositTypeLabel[deposit.depositType]
               : "";
-            const statusAccent = STATUS_ACCENT[r.status];
-
             return (
               <div
                 key={r.id}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 relative overflow-hidden"
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 border-t border-slate-100 bg-white px-3 py-2 hover:bg-slate-50/80"
               >
-                {/* Right accent strip (RTL - visual anchor on right side) */}
-                <span
-                  aria-hidden
-                  className={`absolute right-0 top-4 bottom-4 w-1 rounded-l-full ${statusAccent}`}
-                />
-                <div className="flex flex-col lg:flex-row gap-4 lg:items-start justify-between">
+                <div className="flex flex-col gap-2 min-w-0">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-2">
                       <span className="chip">
@@ -665,18 +662,19 @@ export function RemindersTab({
                       </div>
                     )}
                   </div>
+                </div>
 
-                  <div className="flex flex-row flex-wrap gap-1.5 shrink-0 lg:max-w-sm lg:justify-end">
+                  <div className="flex flex-row flex-wrap gap-1 content-start justify-end max-w-md">
                     {r.status !== "resolved" && (
                       <>
                         <button
-                          className="btn-secondary text-sm"
+                          className="row-btn"
                           onClick={() => sendAgain(r, "advisor")}
                         >
                           <Send size={14} /> שלח תזכורת ליועץ
                         </button>
                         <button
-                          className="btn-secondary text-sm"
+                          className="row-btn"
                           onClick={() => sendAgain(r, "client")}
                         >
                           <Users size={14} /> שלח תזכורת ללקוח
@@ -684,51 +682,47 @@ export function RemindersTab({
                       </>
                     )}
                     {r.status !== "resolved" && (
-                      <div className="rounded-xl border border-navy-100 bg-navy-50/50 p-3 space-y-2">
-                        <p className="text-xs font-bold text-navy-700">מעקב</p>
-                        <div className="flex flex-col gap-2">
-                          <button
-                            type="button"
-                            aria-pressed={!!r.actionDoneAt}
-                            className="flex items-center justify-between gap-3 rounded-xl border border-navy-100 bg-white px-3 py-2 text-right"
-                            onClick={() => markActionDone(r, !r.actionDoneAt)}
-                          >
-                            <span className="text-xs font-bold text-navy-950">
-                              בוצע
-                            </span>
-                            <span
-                              className={`toggle pointer-events-none ${
-                                r.actionDoneAt ? "on" : ""
-                              }`}
-                              aria-hidden
-                            />
-                          </button>
-                          {deposit &&
-                            depositRequiresPayment(deposit.depositType) && (
-                              <button
-                                type="button"
-                                aria-pressed={!!(r.paymentDoneAt || r.paidAt)}
-                                className="flex items-center justify-between gap-3 rounded-xl border border-navy-100 bg-white px-3 py-2 text-right"
-                                onClick={() =>
-                                  markPaid(r, !(r.paymentDoneAt || r.paidAt))
-                                }
-                              >
-                                <span className="text-xs font-bold text-navy-950">
-                                  שולם
-                                </span>
-                                <span
-                                  className={`toggle pointer-events-none gold ${
-                                    r.paymentDoneAt || r.paidAt ? "on" : ""
-                                  }`}
-                                  aria-hidden
-                                />
-                              </button>
-                            )}
-                        </div>
-                      </div>
+                      <button
+                        type="button"
+                        aria-pressed={!!r.actionDoneAt}
+                        title={r.actionDoneAt ? "בטל בוצע" : "סמן בוצע"}
+                        className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2 text-[11px] font-bold ${
+                          r.actionDoneAt
+                            ? "border-teal-600 bg-teal-600 text-white"
+                            : "border-slate-300 bg-white text-slate-400"
+                        }`}
+                        onClick={() => markActionDone(r, !r.actionDoneAt)}
+                      >
+                        <span className={`flex h-3.5 w-3.5 items-center justify-center rounded-[4px] border ${r.actionDoneAt ? "border-white/80" : "border-current"}`}>
+                          {r.actionDoneAt ? "✓" : ""}
+                        </span>
+                        בוצע
+                      </button>
                     )}
+                    {r.status !== "resolved" &&
+                      deposit &&
+                      depositRequiresPayment(deposit.depositType) && (
+                        <button
+                          type="button"
+                          aria-pressed={!!(r.paymentDoneAt || r.paidAt)}
+                          title={r.paymentDoneAt || r.paidAt ? "בטל שולם" : "סמן שולם"}
+                          className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2 text-[11px] font-bold ${
+                            r.paymentDoneAt || r.paidAt
+                              ? "border-amber-500 bg-amber-500 text-white"
+                              : "border-slate-300 bg-white text-slate-400"
+                          }`}
+                          onClick={() =>
+                            markPaid(r, !(r.paymentDoneAt || r.paidAt))
+                          }
+                        >
+                          <span className={`flex h-3.5 w-3.5 items-center justify-center rounded-[4px] border ${r.paymentDoneAt || r.paidAt ? "border-white/80" : "border-current"}`}>
+                            {r.paymentDoneAt || r.paidAt ? "✓" : ""}
+                          </span>
+                          שולם
+                        </button>
+                      )}
                     <button
-                      className="btn-secondary text-sm relative"
+                      className="row-btn relative"
                       onClick={() => setChatTarget(r)}
                     >
                       <MessageSquare size={14} /> צ&apos;אט / שליחת הודעה
@@ -744,7 +738,7 @@ export function RemindersTab({
                     {(r.status === "waiting_client" ||
                       r.status === "carried_over") && (
                       <button
-                        className="btn-secondary text-sm"
+                        className="row-btn"
                         onClick={() => {
                           setRemindClientTarget(r);
                           setRemindClientDays("3");
@@ -755,7 +749,7 @@ export function RemindersTab({
                     )}
                     {r.status !== "resolved" && r.status !== "snoozed" && (
                       <button
-                        className="btn-secondary text-sm"
+                        className="row-btn"
                         onClick={() => {
                           setSnoozeTarget(r);
                           setSnoozeDays("3");
@@ -766,7 +760,7 @@ export function RemindersTab({
                     )}
                     {r.status === "snoozed" && (
                       <button
-                        className="btn-secondary text-sm"
+                        className="row-btn"
                         onClick={() => moveStatus(r, "waiting_advisor")}
                       >
                         <BellRing size={14} /> החזרה לטיפול עכשיו
@@ -776,7 +770,7 @@ export function RemindersTab({
                       deposit?.associationId &&
                       associationMap[deposit.associationId] && (
                         <button
-                          className="btn-secondary text-sm"
+                          className="row-btn"
                           onClick={() => forwardToAssociation(r)}
                           title={
                             associationMap[deposit.associationId!]?.email
@@ -801,25 +795,26 @@ export function RemindersTab({
                     )}
                     {r.status !== "resolved" && (
                       <button
-                        className="btn-primary text-sm"
+                        className="row-btn !bg-navy-950 !text-white"
                         onClick={() => markResolved(r)}
                       >
                         <CheckCircle2 size={14} /> טופל
                       </button>
                     )}
                     <button
-                      className="btn-ghost text-sm"
+                      className="row-btn"
                       onClick={() => setMoveTarget(r)}
                       title="העבר את התזכורת לקטגוריה אחרת"
                     >
                       <ArrowLeftRight size={14} /> העברה לקטגוריה אחרת
                     </button>
                   </div>
-                </div>
               </div>
             );
           })}
-        </div>
+          </div>
+          </div>
+        </section>
       )}
 
       {chatTarget && (

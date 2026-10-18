@@ -8,8 +8,6 @@ import {
   Trash2,
   Edit3,
   X,
-  Mail,
-  Phone,
 } from "lucide-react";
 import type { Contact } from "@/lib/db";
 import { EmptyState } from "@/components/EmptyState";
@@ -126,10 +124,10 @@ export function ContactsTab({
   }
 
   return (
-    <div className="max-w-6xl mx-auto animate-fade-in">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+    <div className="page-shell animate-fade-in">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
         <div>
-          <h1 className="section-title mb-2">אנשי קשר</h1>
+          <h1 className="section-title mb-1">אנשי קשר</h1>
           <p className="section-subtitle">
             ניהול נמענים לשליחת מסמכים ומיילים מהמערכת
           </p>
@@ -140,7 +138,7 @@ export function ContactsTab({
       </div>
 
       {contacts.length > 0 && (
-        <div className="mb-6">
+        <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
           <input
             className="input"
             type="search"
@@ -168,53 +166,65 @@ export function ContactsTab({
           <p className="text-navy-700">לא נמצאו תוצאות</p>
         </div>
       ) : (
-        <div className="grid gap-3">
-          {filtered.map((c) => (
-            <div
-              key={c.id}
-              className="card flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-            >
-              <div className="min-w-0">
-                <h3 className="text-lg font-heading font-bold text-navy-950">
-                  {c.name}
-                </h3>
-                <div className="flex flex-wrap gap-3 mt-1 text-sm text-navy-700">
-                  {c.email && (
-                    <span className="inline-flex items-center gap-1" dir="ltr">
-                      <Mail size={14} /> {c.email}
-                    </span>
-                  )}
-                  {c.phone && (
-                    <span className="inline-flex items-center gap-1" dir="ltr">
-                      <Phone size={14} /> {c.phone}
-                    </span>
-                  )}
-                </div>
-                {c.notes && (
-                  <p className="text-xs text-navy-500 mt-2 whitespace-pre-wrap">
-                    {c.notes}
-                  </p>
-                )}
-              </div>
-              <div className="flex gap-2 shrink-0">
-                <button
-                  type="button"
-                  className="btn-secondary text-sm"
-                  onClick={() => openEdit(c)}
-                >
-                  <Edit3 size={14} /> עריכה
-                </button>
-                <button
-                  type="button"
-                  className="btn-danger"
-                  onClick={() => void remove(c.id)}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        <section className="data-shell">
+          <header className="data-shell-head">
+            <h2 className="data-shell-title">
+              <span className="h-2.5 w-2.5 rounded-full bg-gold-500" />
+              אנשי קשר
+            </h2>
+            <span className="data-count">{filtered.length}</span>
+          </header>
+          <div className="overflow-x-auto">
+            <table className="data-table min-w-[720px]">
+              <thead>
+                <tr>
+                  <th>שם</th>
+                  <th>מייל</th>
+                  <th>טלפון</th>
+                  <th>הערות</th>
+                  <th>פעולות</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((c) => (
+                  <tr key={c.id}>
+                    <td className="whitespace-nowrap font-semibold text-navy-950">
+                      {c.name}
+                    </td>
+                    <td className="text-slate-600" dir="ltr">
+                      {c.email || "—"}
+                    </td>
+                    <td className="whitespace-nowrap text-slate-600" dir="ltr">
+                      {c.phone || "—"}
+                    </td>
+                    <td className="max-w-[16rem] truncate text-slate-500">
+                      {c.notes || "—"}
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          className="row-btn"
+                          onClick={() => openEdit(c)}
+                        >
+                          <Edit3 size={14} /> עריכה
+                        </button>
+                        <button
+                          type="button"
+                          className="row-btn danger"
+                          onClick={() => void remove(c.id)}
+                          title="מחיקה"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {showForm && (

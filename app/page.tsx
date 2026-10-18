@@ -290,15 +290,15 @@ export default async function Home() {
   const firstName = user.name?.split(" ")[0] || "";
 
   return (
-    <div className="max-w-6xl mx-auto animate-fade-in-up">
-      <div className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-5">
+    <div className="page-shell animate-fade-in-up">
+      <div className="mb-4 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <div className="text-fluid-sm text-navy-600 mb-3 flex items-center gap-2 font-medium">
             <Sparkles size={14} className="text-gold-500 animate-pulse-slow" />
             {greeting}
             {firstName ? `, ${firstName}` : ""} · {formatDateHe(now)}
           </div>
-          <h1 className="section-title mb-3">לוח בקרה הפקדות</h1>
+          <h1 className="section-title mb-1">לוח בקרה הפקדות</h1>
           <p className="section-subtitle">סקירה לפי תיעוד ביצוע ותשלום</p>
         </div>
 
@@ -329,7 +329,7 @@ export default async function Home() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         <HighlightCard
           title="לא בוצע ולא שולם"
           value={neitherCount}
@@ -379,7 +379,7 @@ export default async function Home() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {stats.map((s, i) => {
             const Icon = s.icon;
             return (
@@ -415,8 +415,8 @@ export default async function Home() {
         </div>
       )}
 
-      <div className="mt-10 card card-gold">
-        <h2 className="text-xl font-heading font-bold text-navy-950 mb-4">
+      <div className="mt-4 data-shell p-4">
+        <h2 className="data-shell-title mb-3">
           פעולות מהירות
         </h2>
         <div className="flex flex-wrap gap-3">
@@ -473,10 +473,10 @@ function HighlightCard({
   return (
     <Link
       href={href}
-      className={`rounded-2xl border bg-gradient-to-br ${tones[accent]} p-5 hover:shadow-md transition-shadow block`}
+      className={`rounded-xl border bg-gradient-to-br ${tones[accent]} px-4 py-3 hover:shadow-sm transition-shadow block`}
     >
-      <div className="text-sm font-semibold text-navy-800 mb-1">{title}</div>
-      <div className="text-3xl font-heading font-bold text-navy-950 mb-1">
+      <div className="text-sm font-bold text-navy-950 mb-1">{title}</div>
+      <div className="text-2xl font-bold text-navy-950 mb-1">
         <AnimatedCounter value={value} />
       </div>
       <div className="text-xs text-navy-600">{description}</div>

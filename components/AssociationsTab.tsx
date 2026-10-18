@@ -10,7 +10,6 @@ import {
   X,
   Save,
   ArrowRight,
-  Banknote,
   Send,
 } from "lucide-react";
 import type { Association } from "@/lib/db";
@@ -154,10 +153,10 @@ export function AssociationsTab({
   }
 
   return (
-    <div className="max-w-6xl mx-auto animate-fade-in">
+    <div className="page-shell animate-fade-in">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
         <div>
-          <h1 className="section-title mb-2">עמותות</h1>
+          <h1 className="section-title mb-1">עמותות</h1>
           <p className="section-subtitle">
             ניהול עמותות שאליהן מועברים הכספים - פרטי החשבון ישלחו ללקוח בתזכורת
           </p>
@@ -189,85 +188,93 @@ export function AssociationsTab({
           </button>
         </div>
       ) : (
-        <div className="grid gap-2">
-          {associations.map((a) => (
-            <div
-              key={a.id}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 flex flex-col md:flex-row gap-2 md:items-center justify-between"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 mb-3 flex-wrap">
-                  <h3 className="text-base font-bold text-navy-950">
-                    {a.name}
-                  </h3>
-                  {usage[a.id] ? (
-                    <span className="chip chip-blue">
-                      משויכת ל-{usage[a.id]} הפקדות
-                    </span>
-                  ) : (
-                    <span className="chip">לא משויכת להפקדות</span>
-                  )}
-                  <span className="chip chip-gold">
-                    {associationQueueHint(a.handlingQueue)}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-navy-700">
-                  {a.email && (
-                    <div dir="ltr" className="text-navy-600 font-medium">
-                      ✉ {a.email}
-                    </div>
-                  )}
-                  {a.bankNumber && (
-                    <div className="flex items-center gap-2">
-                      <Banknote size={14} className="text-teal-600" />
-                      בנק: <span dir="ltr">{a.bankNumber}</span>
-                    </div>
-                  )}
-                  {a.branchNumber && (
-                    <div>
-                      סניף: <span dir="ltr">{a.branchNumber}</span>
-                    </div>
-                  )}
-                  {a.accountNumber && (
-                    <div>
-                      חשבון: <span dir="ltr">{a.accountNumber}</span>
-                    </div>
-                  )}
-                </div>
-                {a.notes && (
-                  <div className="mt-2 text-sm text-navy-500">{a.notes}</div>
-                )}
-              </div>
-              <div className="flex gap-2 shrink-0 flex-wrap">
-                <button
-                  className="btn-secondary text-sm"
-                  onClick={() => void sendDigest(a)}
-                  disabled={!a.email || sendingId === a.id}
-                  title={
-                    a.email
-                      ? "שליחת מייל אחד עם כל ההפקדות שממתינות לטיפול העמותה"
-                      : "צריך מייל של העמותה כדי לשלוח"
-                  }
-                >
-                  <Send size={14} />
-                  {sendingId === a.id ? "שולח..." : "שלח התראה מרוכזת"}
-                </button>
-                <a
-                  className="btn-ghost text-sm"
-                  href="/settings?tab=templates&template=association_pending_digest"
-                >
-                  ניסוח המייל
-                </a>
-                <button className="btn-ghost" onClick={() => openEdit(a)}>
-                  <Edit3 size={16} /> עריכה
-                </button>
-                <button className="btn-danger" onClick={() => remove(a.id)}>
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        <section className="data-shell">
+          <header className="data-shell-head">
+            <h2 className="data-shell-title">
+              <span className="h-2.5 w-2.5 rounded-full bg-teal-600" />
+              עמותות
+            </h2>
+            <span className="data-count">{associations.length}</span>
+          </header>
+          <div className="overflow-x-auto">
+            <table className="data-table min-w-[920px]">
+              <thead>
+                <tr>
+                  <th>עמותה</th>
+                  <th>תור טיפול</th>
+                  <th>מייל</th>
+                  <th>בנק</th>
+                  <th>סניף</th>
+                  <th>חשבון</th>
+                  <th>פעולות</th>
+                </tr>
+              </thead>
+              <tbody>
+                {associations.map((a) => (
+                  <tr key={a.id}>
+                    <td className="whitespace-nowrap font-semibold text-navy-950">
+                      {a.name}
+                      <div className="text-xs font-normal text-slate-500">
+                        {usage[a.id]
+                          ? `משויכת ל-${usage[a.id]} הפקדות`
+                          : "לא משויכת להפקדות"}
+                        {a.notes ? ` · ${a.notes}` : ""}
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap text-slate-600">
+                      {associationQueueHint(a.handlingQueue)}
+                    </td>
+                    <td className="text-slate-600" dir="ltr">
+                      {a.email || "—"}
+                    </td>
+                    <td className="whitespace-nowrap text-slate-600" dir="ltr">
+                      {a.bankNumber || "—"}
+                    </td>
+                    <td className="whitespace-nowrap text-slate-600" dir="ltr">
+                      {a.branchNumber || "—"}
+                    </td>
+                    <td className="whitespace-nowrap text-slate-600" dir="ltr">
+                      {a.accountNumber || "—"}
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-1">
+                        <button
+                          className="row-btn"
+                          onClick={() => void sendDigest(a)}
+                          disabled={!a.email || sendingId === a.id}
+                          title={
+                            a.email
+                              ? "שליחת מייל אחד עם כל ההפקדות שממתינות לטיפול העמותה"
+                              : "צריך מייל של העמותה כדי לשלוח"
+                          }
+                        >
+                          <Send size={13} />
+                          {sendingId === a.id ? "שולח..." : "התראה"}
+                        </button>
+                        <a
+                          className="row-btn"
+                          href="/settings?tab=templates&template=association_pending_digest"
+                        >
+                          ניסוח
+                        </a>
+                        <button className="row-btn" onClick={() => openEdit(a)}>
+                          <Edit3 size={14} />
+                        </button>
+                        <button
+                          className="row-btn danger"
+                          onClick={() => remove(a.id)}
+                          title="מחיקה"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {showForm && (

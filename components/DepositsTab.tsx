@@ -895,7 +895,7 @@ export function DepositsTab({
   }, [visibleRows]);
 
   return (
-    <div className="max-w-[1280px] mx-auto animate-fade-in">
+    <div className="page-shell animate-fade-in">
       {toast && (
         <div
           className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl font-bold text-white"

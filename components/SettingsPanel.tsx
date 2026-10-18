@@ -187,9 +187,9 @@ export function SettingsPanel({ initialUser }: { initialUser: User }) {
   }, []);
 
   return (
-    <div className="max-w-6xl mx-auto animate-fade-in">
-      <div className="mb-8">
-        <h1 className="section-title mb-2">הגדרות</h1>
+    <div className="page-shell animate-fade-in">
+      <div className="mb-4">
+        <h1 className="section-title mb-1">הגדרות</h1>
         <p className="section-subtitle">
           פרופיל, חיבור מייל, ניסוח מיילים, ולוח הבקרה
         </p>

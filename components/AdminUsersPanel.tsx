@@ -5,10 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   UserPlus,
   Users,
-  ShieldCheck,
-  Mail,
-  Phone,
-  Building2,
   Edit3,
   Trash2,
   KeyRound,
@@ -222,8 +218,8 @@ export function AdminUsersPanel({
   }
 
   return (
-    <div className="max-w-6xl mx-auto animate-fade-in">
-      <div className="flex items-start justify-between mb-8 flex-wrap gap-4">
+    <div className="page-shell animate-fade-in">
+      <div className="flex items-start justify-between mb-4 flex-wrap gap-4">
         <div>
           <h1 className="section-title mb-2 flex items-center gap-3">
             <Users size={32} className="text-teal-600" /> ניהול יועצים
@@ -237,91 +233,82 @@ export function AdminUsersPanel({
         </button>
       </div>
 
-      <div className="grid gap-4">
+      <section className="data-shell">
+        <header className="data-shell-head">
+          <h2 className="data-shell-title">
+            <span className="h-2.5 w-2.5 rounded-full bg-teal-600" />
+            יועצים
+          </h2>
+          <span className="data-count">{users.length}</span>
+        </header>
+        <div className="overflow-x-auto">
+          <table className="data-table min-w-[860px]">
+            <thead>
+              <tr>
+                <th>שם</th>
+                <th>מייל</th>
+                <th>טלפון</th>
+                <th>סטטוס</th>
+                <th>פעולות</th>
+              </tr>
+            </thead>
+            <tbody>
         {users.map((u) => (
-          <div
-            key={u.id}
-            className={`card flex flex-col md:flex-row gap-4 md:items-center justify-between ${
-              !u.active ? "opacity-60" : ""
-            }`}
-          >
-            <div className="flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-2 mb-1">
-                <h3 className="text-xl font-heading font-bold text-navy-950">
-                  {u.name}
-                </h3>
-                {u.role === "admin" && (
-                  <span className="chip chip-gold">
-                    <ShieldCheck size={12} /> אדמין
-                  </span>
-                )}
-                {u.id === currentUserId && (
-                  <span className="chip">אתה</span>
-                )}
-                {!u.active && (
-                  <span className="chip chip-rose">מושבת</span>
-                )}
-                {u.mustChangePassword && (
-                  <span className="chip chip-amber">
-                    ממתין להחלפת סיסמה
-                  </span>
-                )}
-                {u.gmailConnected ? (
-                  <span className="chip chip-emerald">
-                    Gmail מחובר
-                  </span>
-                ) : (
-                  <span className="chip">Gmail לא מחובר</span>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-navy-700">
-                <div dir="ltr" className="flex items-center gap-1.5">
-                  <Mail size={14} className="text-teal-600" /> {u.email}
-                </div>
-                {u.phone && (
-                  <div dir="ltr" className="flex items-center gap-1.5">
-                    <Phone size={14} /> {u.phone}
-                  </div>
-                )}
-                {u.companyName && (
-                  <div className="flex items-center gap-1.5">
-                    <Building2 size={14} /> {u.companyName}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2 shrink-0">
+          <tr key={u.id} className={!u.active ? "opacity-60" : ""}>
+            <td className="whitespace-nowrap font-semibold text-navy-950">
+              {u.name}
+              {u.companyName ? (
+                <div className="text-xs font-normal text-slate-500">{u.companyName}</div>
+              ) : null}
+            </td>
+            <td className="text-slate-600" dir="ltr">{u.email}</td>
+            <td className="whitespace-nowrap text-slate-600" dir="ltr">{u.phone || "—"}</td>
+            <td className="whitespace-nowrap text-xs text-slate-600">
+              {[
+                u.role === "admin" ? "אדמין" : "יועץ",
+                u.id === currentUserId ? "אתה" : "",
+                !u.active ? "מושבת" : "",
+                u.mustChangePassword ? "ממתין להחלפת סיסמה" : "",
+                u.gmailConnected ? "Gmail מחובר" : "Gmail לא מחובר",
+              ].filter(Boolean).join(" · ")}
+            </td>
+            <td>
+            <div className="flex flex-wrap gap-1 shrink-0">
               <button
-                className="btn-ghost"
+                className="row-btn"
                 onClick={() => resetPassword(u)}
                 title="איפוס סיסמה"
               >
-                <KeyRound size={16} /> איפוס סיסמה
+                <KeyRound size={14} /> סיסמה
               </button>
-              <button className="btn-ghost" onClick={() => openEdit(u)}>
-                <Edit3 size={16} /> עריכה
+              <button className="row-btn" onClick={() => openEdit(u)}>
+                <Edit3 size={14} /> עריכה
               </button>
               {u.id !== currentUserId && (
                 <button
-                  className="btn-ghost"
+                  className="row-btn"
                   onClick={() => toggleActive(u)}
                   title={u.active ? "השבת" : "הפעל"}
                 >
-                  <Power size={16} /> {u.active ? "השבת" : "הפעל"}
+                  <Power size={14} /> {u.active ? "השבת" : "הפעל"}
                 </button>
               )}
               {u.id !== currentUserId && (
                 <button
-                  className="btn-danger"
+                  className="row-btn danger"
                   onClick={() => removeUser(u)}
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={14} />
                 </button>
               )}
             </div>
-          </div>
+            </td>
+          </tr>
         ))}
-      </div>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {showForm && (
         <div className="modal-backdrop" onClick={() => setShowForm(false)}>
