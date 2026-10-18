@@ -422,16 +422,16 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
           <p className="text-navy-700">נסה מילת חיפוש אחרת</p>
         </div>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid gap-2">
           {filteredClients.map((c) => (
             <div
               key={c.id}
-              className="card flex flex-col md:flex-row gap-4 md:items-center justify-between cursor-pointer hover:border-navy-950/25 transition-colors"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 flex flex-col md:flex-row gap-2 md:items-center justify-between cursor-pointer hover:border-teal-400/60 transition-colors"
               onClick={() => router.push(`/clients/${c.id}`)}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-3 mb-2">
-                  <h3 className="text-xl font-heading font-bold text-navy-950">
+                  <h3 className="text-base font-bold text-navy-950">
                     {c.name}
                   </h3>
                   {c.caseType && (

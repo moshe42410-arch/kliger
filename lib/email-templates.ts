@@ -157,7 +157,7 @@ export const TEMPLATE_VARIABLES: TemplateVar[] = [
   {
     key: "situationLabel",
     label: "תיאור המקרה ליועץ",
-    example: "מילגה בהעברה לחשבון העמותה",
+    example: "חודש אוקטובר 2026. הלקוח צריך להעביר לחשבון העמותה לפי פרטי החשבון, ולהעלות אסמכתא.",
   },
   {
     key: "depositsLink",

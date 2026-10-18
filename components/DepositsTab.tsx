@@ -12,6 +12,7 @@ import {
   Edit3,
   Search,
   Download,
+  GripVertical,
 } from "lucide-react";
 import type {
   Association,
@@ -34,7 +35,10 @@ import {
   depositRequiresPayment,
   depositShowsPayerField,
 } from "@/lib/types";
-import { depositDocBucket } from "@/lib/deposit-doc-buckets";
+import {
+  depositDocBucket,
+  type DepositDocBucket,
+} from "@/lib/deposit-doc-buckets";
 import { listMonthDocReminders } from "@/lib/deposit-doc-reminders";
 
 interface FormState {
@@ -109,6 +113,62 @@ function monthGroups(rows: { deposit: Deposit; reminder: Reminder | null }[]) {
     .map(([bucket, list]) => ({ bucket, rows: list }));
 }
 
+function monthCode(bucket: string | null | undefined): string {
+  if (!bucket || !/^\d{4}-\d{2}$/.test(bucket)) return "";
+  const [year, month] = bucket.split("-");
+  return `${Number(month)}/${year}`;
+}
+
+function depositUrgency(
+  targetDate: string | null | undefined,
+  open: boolean
+): "urgent" | "critical" | null {
+  if (!open || !targetDate) return null;
+  const target = new Date(`${targetDate.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (today < target) return null;
+  if (today.getTime() === target.getTime()) return "urgent";
+  return "critical";
+}
+
+const SECTION_TONE: Record<
+  string,
+  { bar: string; title: string; dot: string; count: string }
+> = {
+  pending: {
+    bar: "bg-amber-50",
+    title: "text-amber-950",
+    dot: "bg-amber-500",
+    count: "bg-amber-500 text-white",
+  },
+  done: {
+    bar: "bg-teal-50",
+    title: "text-teal-900",
+    dot: "bg-teal-600",
+    count: "bg-teal-600 text-white",
+  },
+  paid: {
+    bar: "bg-gold-50",
+    title: "text-gold-800",
+    dot: "bg-gold-600",
+    count: "bg-gold-600 text-white",
+  },
+  archive: {
+    bar: "bg-navy-50",
+    title: "text-navy-950",
+    dot: "bg-navy-800",
+    count: "bg-navy-950 text-white",
+  },
+  inactive: {
+    bar: "bg-slate-100",
+    title: "text-slate-600",
+    dot: "bg-slate-400",
+    count: "bg-slate-500 text-white",
+  },
+};
+
 function money(n: number): string {
   return new Intl.NumberFormat("he-IL", {
     style: "currency",
@@ -117,7 +177,7 @@ function money(n: number): string {
   }).format(n);
 }
 
-function DocPill({
+function StatusMark({
   label,
   on,
   tone,
@@ -133,14 +193,27 @@ function DocPill({
       type="button"
       onClick={onClick}
       aria-pressed={on}
-      className={`h-7 px-2.5 rounded-full text-[11px] font-bold leading-none transition-colors ${
+      title={on ? `בטל ${label}` : `סמן ${label}`}
+      className={`inline-flex h-7 items-center gap-1.5 rounded-full border px-2 text-[11px] font-bold leading-none transition-colors ${
         on
           ? tone === "gold"
-            ? "bg-amber-500 text-white"
-            : "bg-teal-600 text-white"
-          : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+            ? "border-amber-500 bg-amber-500 text-white"
+            : "border-teal-600 bg-teal-600 text-white"
+          : "border-slate-300 bg-white text-slate-400 hover:border-slate-400 hover:text-slate-600"
       }`}
     >
+      <span
+        className={`flex h-3.5 w-3.5 items-center justify-center rounded-[4px] border ${
+          on ? "border-white/80 bg-white/15" : "border-current"
+        }`}
+        aria-hidden
+      >
+        {on && (
+          <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2.2">
+            <path d="M2.2 6.2 4.7 8.8 9.8 3.2" />
+          </svg>
+        )}
+      </span>
       {label}
     </button>
   );
@@ -161,17 +234,31 @@ function PayerCell({
 }) {
   const saved = (value || "").trim();
   const [text, setText] = useState(saved);
+  const [editing, setEditing] = useState(!saved);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const focusOnEdit = useRef(false);
 
   useEffect(() => {
     if (document.activeElement === inputRef.current) return;
     setText(value || "");
+    if ((value || "").trim()) setEditing(false);
   }, [value, reminderId]);
+
+  useEffect(() => {
+    if (editing && focusOnEdit.current) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+      focusOnEdit.current = false;
+    }
+  }, [editing]);
 
   async function save() {
     const next = text.trim();
-    if (next === saved) return;
+    if (next === saved) {
+      setEditing(!next);
+      return;
+    }
     setSaving(true);
     try {
       let id = reminderId;
@@ -194,14 +281,34 @@ function PayerCell({
         body: JSON.stringify({ payerName: next }),
       });
       const j = await res.json().catch(() => ({}));
-      if (res.ok && j.reminder) onSaved(j.reminder as Reminder);
-      else {
+      if (res.ok && j.reminder) {
+        onSaved(j.reminder as Reminder);
+        setText(next);
+        setEditing(!next);
+      } else {
         onError(j.error || "שמירת שם המעביר נכשלה");
         setText(saved);
       }
     } finally {
       setSaving(false);
     }
+  }
+
+  if (!editing && saved) {
+    return (
+      <button
+        type="button"
+        title="לחץ לעריכה"
+        onClick={() => {
+          focusOnEdit.current = true;
+          setText(saved);
+          setEditing(true);
+        }}
+        className="h-8 max-w-[12rem] truncate rounded-lg border border-transparent bg-slate-100 px-2.5 text-sm font-semibold text-navy-950 hover:border-teal-400 hover:bg-white"
+      >
+        {saved}
+      </button>
+    );
   }
 
   return (
@@ -264,6 +371,12 @@ export function DepositsTab({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const dragPayload = useRef<{
+    depositId: string;
+    reminderId?: string;
+  } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [dropTarget, setDropTarget] = useState<DepositDocBucket | null>(null);
 
   const clientMap = useMemo(() => {
     const m: Record<string, Client> = {};
@@ -554,6 +667,83 @@ export function DepositsTab({
     }
   }
 
+  async function moveToBucket(
+    depositId: string,
+    reminderId: string | undefined,
+    target: DepositDocBucket
+  ) {
+    const deposit = deposits.find((d) => d.id === depositId);
+    if (!deposit || !deposit.active) return;
+    const found = reminderId ? docs[reminderId] : undefined;
+    const rem = found ?? (await ensureDocReminder(depositId));
+    if (!rem) return;
+    const needsPay = depositRequiresPayment(deposit.depositType);
+    const wantAction =
+      target === "done" ||
+      target === "archive" ||
+      (target === "paid" && !needsPay);
+    const wantPaid = needsPay && (target === "paid" || target === "archive");
+    const curAction = !!rem.actionDoneAt;
+    const curPaid = !!(rem.paymentDoneAt || rem.paidAt);
+    if (curAction === wantAction && (!needsPay || curPaid === wantPaid)) return;
+    const now = new Date().toISOString();
+    const optimistic: Reminder = {
+      ...rem,
+      actionDoneAt: wantAction ? rem.actionDoneAt || now : null,
+      paymentDoneAt: needsPay
+        ? wantPaid
+          ? rem.paymentDoneAt || rem.paidAt || now
+          : null
+        : rem.paymentDoneAt,
+      paidAt: needsPay
+        ? wantPaid
+          ? rem.paidAt || rem.paymentDoneAt || now
+          : null
+        : rem.paidAt,
+    };
+    setDocs((prev) => ({ ...prev, [rem.id]: optimistic }));
+    const post = async (path: "action-done" | "mark-paid", on: boolean) => {
+      const res = await fetch(`/api/reminders/${rem.id}/${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ on }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || "עדכון נכשל");
+      return (j.reminder as Reminder | undefined) ?? null;
+    };
+    try {
+      let latest: Reminder = optimistic;
+      if (curAction !== wantAction) {
+        const saved = await post("action-done", wantAction);
+        if (saved) latest = saved;
+      }
+      if (needsPay && curPaid !== wantPaid) {
+        const saved = await post("mark-paid", wantPaid);
+        if (saved) latest = { ...latest, ...saved };
+      }
+      setDocs((prev) => ({ ...prev, [rem.id]: latest }));
+      const landed = depositDocBucket(deposit.depositType, latest);
+      const titles: Record<DepositDocBucket, string> = {
+        pending: "ממתינות",
+        done: "בוצעו",
+        paid: "שולמו",
+        archive: "ארכיון",
+      };
+      setToast(
+        landed !== target && target !== "pending"
+          ? "בסוג הזה אין שולם נפרד. השורה עברה לארכיון"
+          : `השורה עברה אל ${titles[landed]}`
+      );
+      router.refresh();
+    } catch (err) {
+      setDocs((prev) => ({ ...prev, [rem.id]: rem }));
+      setToast(
+        `שגיאה: ${err instanceof Error ? err.message : "עדכון נכשל"}`
+      );
+    }
+  }
+
   async function remove(id: string) {
     if (!confirm("למחוק את ההפקדה? הפעולה תמחק גם את כל התזכורות שלה.")) return;
     const res = await fetch(`/api/deposits/${id}`, { method: "DELETE" });
@@ -701,8 +891,7 @@ export function DepositsTab({
             : row.deposit.active &&
               docBucket(row.deposit, row.reminder) === section.key
         ),
-      }))
-      .filter((section) => section.rows.length > 0);
+      }));
   }, [visibleRows]);
 
   return (
@@ -723,7 +912,7 @@ export function DepositsTab({
         <div className="min-w-0">
           <h1 className="section-title mb-1">הפקדות</h1>
           <p className="section-subtitle">
-            שורה לכל חודש. שם מעביר נרשם גם על מילגות שכבר עברו.
+            שורה לכל חודש. גרור שורה אל סטטוס, או סמן בוצע ושולם בתיבה.
           </p>
         </div>
         <button
@@ -864,23 +1053,85 @@ export function DepositsTab({
         </div>
       ) : (
         <div className="space-y-4">
-          {sections.map((section) => {
+          {sections
+            .filter(
+              (section) =>
+                section.key !== "inactive" || section.rows.length > 0
+            )
+            .map((section) => {
             const groups = section.group
               ? monthGroups(section.rows)
               : [{ bucket: "", rows: section.rows }];
+            const tone = SECTION_TONE[section.key] || SECTION_TONE.archive;
+            const isOver = dropTarget === section.key;
             return (
               <section
                 key={section.key}
                 id={`deposit-section-${section.key}`}
-                className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+                onDragEnter={(e) => {
+                  if (section.key === "inactive" || !dragPayload.current) return;
+                  e.preventDefault();
+                  setDropTarget(section.key as DepositDocBucket);
+                }}
+                onDragOver={(e) => {
+                  if (section.key === "inactive" || !dragPayload.current) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  setDropTarget((cur) =>
+                    cur === section.key ? cur : (section.key as DepositDocBucket)
+                  );
+                }}
+                onDragLeave={(e) => {
+                  if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                  setDropTarget((cur) =>
+                    cur === section.key ? null : cur
+                  );
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const payload = dragPayload.current;
+                  dragPayload.current = null;
+                  setDragging(false);
+                  setDropTarget(null);
+                  if (!payload || section.key === "inactive") return;
+                  void moveToBucket(
+                    payload.depositId,
+                    payload.reminderId,
+                    section.key
+                  );
+                }}
+                className={`overflow-hidden rounded-xl border bg-white shadow-sm ${
+                  isOver
+                    ? "border-teal-500 ring-2 ring-teal-400"
+                    : "border-slate-200"
+                }`}
               >
-                <header className="flex items-center justify-between gap-3 bg-navy-950 px-4 py-3 text-white">
-                  <h2 className="text-xl font-black tracking-tight">
-                    {section.title}
+                <header
+                  className={`flex items-center justify-between gap-3 border-b px-4 py-2.5 ${
+                    isOver
+                      ? "border-teal-600 bg-teal-600"
+                      : `border-slate-200 ${tone.bar}`
+                  }`}
+                >
+                  <h2
+                    className={`flex items-center gap-2 font-sans text-base font-bold ${
+                      isOver ? "!text-white" : tone.title
+                    }`}
+                  >
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full ${
+                        isOver ? "bg-white" : tone.dot
+                      }`}
+                    />
+                    {isOver ? `שחרר כאן · ${section.title}` : section.title}
                   </h2>
                   <div className="flex items-center gap-2">
                     <a
-                      className="rounded-full bg-white px-3 py-1 text-xs font-black text-navy-950 hover:bg-teal-100"
+                      className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${
+                        isOver
+                          ? "border-white/40 text-white hover:bg-white/10"
+                          : "border-navy-950/15 text-navy-800 hover:bg-white"
+                      }`}
                       href={`/api/deposits/payers-export?section=${section.key}${
                         exportAssociationId
                           ? `&associationId=${encodeURIComponent(exportAssociationId)}`
@@ -889,24 +1140,36 @@ export function DepositsTab({
                     >
                       אקסל
                     </a>
-                    <span className="rounded-full bg-white/15 px-2.5 py-1 text-sm font-black">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                        isOver ? "bg-white/20 text-white" : tone.count
+                      }`}
+                    >
                       {section.rows.length}
                     </span>
                   </div>
                 </header>
+                {section.rows.length === 0 ? (
+                  <p className="px-4 py-6 text-center text-sm text-slate-500">
+                    {dragging
+                      ? `שחרר כאן כדי להעביר אל ${section.title}`
+                      : "אין שורות. אפשר לגרור לכאן."}
+                  </p>
+                ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[980px] border-collapse text-sm">
+                  <table className="w-full min-w-[1040px] border-collapse text-sm">
                     <thead>
-                      <tr className="bg-slate-50 text-[11px] font-semibold text-slate-500">
-                        <th className="px-3 py-2 text-right font-semibold">חודש</th>
-                        <th className="px-3 py-2 text-right font-semibold">לקוח</th>
-                        <th className="px-3 py-2 text-right font-semibold">סוג</th>
-                        <th className="px-3 py-2 text-right font-semibold">עמותה</th>
-                        <th className="px-3 py-2 text-right font-semibold">מעביר</th>
-                        <th className="px-3 py-2 text-right font-semibold">סכום</th>
-                        <th className="px-3 py-2 text-right font-semibold">יעד</th>
-                        <th className="px-3 py-2 text-right font-semibold">סטטוס</th>
-                        <th className="px-3 py-2 text-right font-semibold">פעולות</th>
+                      <tr className="bg-navy-950 text-[11px] font-semibold text-white">
+                        <th className="w-8 px-2 py-2 font-semibold text-white" aria-label="גרירה" />
+                        <th className="px-3 py-2 text-right font-semibold text-white">לקוח</th>
+                        <th className="px-3 py-2 text-right font-semibold text-white">חודש הפקדה</th>
+                        <th className="px-3 py-2 text-right font-semibold text-white">סוג</th>
+                        <th className="px-3 py-2 text-right font-semibold text-white">עמותה</th>
+                        <th className="px-3 py-2 text-right font-semibold text-white">מעביר</th>
+                        <th className="px-3 py-2 text-right font-semibold text-white">סכום</th>
+                        <th className="px-3 py-2 text-right font-semibold text-white">יעד</th>
+                        <th className="px-3 py-2 text-right font-semibold text-white">סטטוס</th>
+                        <th className="px-3 py-2 text-right font-semibold text-white">פעולות</th>
                       </tr>
                     </thead>
                     {groups.map((group) => (
@@ -914,7 +1177,7 @@ export function DepositsTab({
                         {section.group && (
                           <tr className="bg-slate-100/80">
                             <td
-                              colSpan={9}
+                              colSpan={10}
                               className="px-3 py-2 text-sm font-black text-navy-950"
                             >
                               {group.bucket === "0000-00"
@@ -932,32 +1195,87 @@ export function DepositsTab({
                             const needsPay = depositRequiresPayment(d.depositType);
                             const actionDone = !!rem?.actionDoneAt;
                             const paidDone = !!(rem?.paymentDoneAt || rem?.paidAt);
+                            const monthBucket =
+                              rem?.monthBucket ||
+                              (rem?.targetDate || "").slice(0, 7);
+                            const monthMark = monthCode(monthBucket);
+                            const openWork = !(
+                              actionDone &&
+                              (!needsPay || paidDone)
+                            );
+                            const urgency = depositUrgency(
+                              rem?.targetDate,
+                              openWork
+                            );
                             const typeText =
                               d.depositType === "kollel_scholarship"
                                 ? `${depositTypeShortLabel[d.depositType]} · ${scholarshipDeliveryLabel[d.scholarshipDelivery || "cash"]}`
                                 : depositTypeShortLabel[d.depositType];
+                            const rowKey = rem ? rem.id : d.id;
                             return (
                               <tr
-                                key={rem ? rem.id : d.id}
-                                className="border-t border-slate-100 hover:bg-slate-50/80"
-                              >
-                                <td
-                                  className="px-3 py-1.5 whitespace-nowrap text-slate-600"
-                                  title={
-                                    meta && meta.sends > 0
-                                      ? `נשלחו ${meta.sends} תזכורות`
-                                      : undefined
+                                key={rowKey}
+                                draggable={d.active}
+                                onDragStart={(e) => {
+                                  if (!d.active) return;
+                                  const origin = e.target as HTMLElement;
+                                  if (
+                                    origin.closest(
+                                      "button, a, input, textarea, select"
+                                    )
+                                  ) {
+                                    e.preventDefault();
+                                    return;
                                   }
-                                >
-                                  {rem?.monthBucket
-                                    ? formatMonthBucket(rem.monthBucket)
-                                    : "—"}
+                                  dragPayload.current = {
+                                    depositId: d.id,
+                                    reminderId: rem?.id,
+                                  };
+                                  e.dataTransfer.setData("text/plain", rowKey);
+                                  e.dataTransfer.effectAllowed = "move";
+                                  window.setTimeout(() => setDragging(true), 0);
+                                }}
+                                onDragEnd={() => {
+                                  dragPayload.current = null;
+                                  setDragging(false);
+                                  setDropTarget(null);
+                                }}
+                                title={d.active ? "גרור את השורה אל סטטוס אחר" : undefined}
+                                className={`border-t border-slate-100 hover:bg-slate-50/80 ${
+                                  d.active ? "cursor-grab active:cursor-grabbing" : ""
+                                }`}
+                              >
+                                <td className="px-1 py-1.5 text-center text-slate-300">
+                                  {d.active ? <GripVertical size={15} /> : null}
                                 </td>
                                 <td
                                   className="px-3 py-1.5 font-semibold text-navy-950 whitespace-nowrap"
                                   title={d.notes || undefined}
                                 >
                                   {client?.name || "לקוח לא ידוע"}
+                                </td>
+                                <td className="px-3 py-1.5 whitespace-nowrap">
+                                  {monthMark ? (
+                                    <span
+                                      className="inline-flex h-7 items-center rounded-full bg-navy-950 px-2.5 text-xs font-black text-white"
+                                      title={
+                                        [
+                                          monthBucket
+                                            ? formatMonthBucket(monthBucket)
+                                            : "",
+                                          meta && meta.sends > 0
+                                            ? `נשלחו ${meta.sends} תזכורות`
+                                            : "",
+                                        ]
+                                          .filter(Boolean)
+                                          .join(" · ") || undefined
+                                      }
+                                    >
+                                      {monthMark}
+                                    </span>
+                                  ) : (
+                                    "—"
+                                  )}
                                 </td>
                                 <td className="px-3 py-1.5 whitespace-nowrap text-slate-700">
                                   {typeText}
@@ -993,8 +1311,18 @@ export function DepositsTab({
                                 </td>
                                 <td className="px-3 py-1.5">
                                   <div className="flex items-center gap-1">
-                                    <DocPill
-                                      label={actionDone ? "בוצע" : "לא בוצע"}
+                                    {urgency === "critical" && (
+                                      <span className="inline-flex h-7 items-center rounded-full bg-red-600 px-2 text-[11px] font-black text-white">
+                                        קריטי
+                                      </span>
+                                    )}
+                                    {urgency === "urgent" && (
+                                      <span className="inline-flex h-7 items-center rounded-full bg-amber-500 px-2 text-[11px] font-black text-white">
+                                        דחוף
+                                      </span>
+                                    )}
+                                    <StatusMark
+                                      label="בוצע"
                                       tone="teal"
                                       on={actionDone}
                                       onClick={() =>
@@ -1007,8 +1335,8 @@ export function DepositsTab({
                                       }
                                     />
                                     {needsPay && (
-                                      <DocPill
-                                        label={paidDone ? "שולם" : "לא שולם"}
+                                      <StatusMark
+                                        label="שולם"
                                         tone="gold"
                                         on={paidDone}
                                         onClick={() =>
@@ -1079,6 +1407,7 @@ export function DepositsTab({
                     ))}
                   </table>
                 </div>
+                )}
               </section>
             );
           })}

@@ -155,7 +155,7 @@ export function AssociationsTab({
 
   return (
     <div className="max-w-6xl mx-auto animate-fade-in">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
         <div>
           <h1 className="section-title mb-2">עמותות</h1>
           <p className="section-subtitle">
@@ -189,15 +189,15 @@ export function AssociationsTab({
           </button>
         </div>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid gap-2">
           {associations.map((a) => (
             <div
               key={a.id}
-              className="card flex flex-col md:flex-row gap-4 md:items-center justify-between"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 flex flex-col md:flex-row gap-2 md:items-center justify-between"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-3 flex-wrap">
-                  <h3 className="text-xl font-heading font-bold text-navy-950">
+                  <h3 className="text-base font-bold text-navy-950">
                     {a.name}
                   </h3>
                   {usage[a.id] ? (

@@ -123,20 +123,30 @@ function buildAccountBlock(association: Association | null): string {
   return [`פרטי החשבון של ${association.name}:`, ...lines].join("\n");
 }
 
-function situationLabelFor(deposit: Deposit): string {
+function situationLabelFor(deposit: Deposit, targetDateIso: string): string {
+  const when = (() => {
+    const raw = (targetDateIso || "").slice(0, 10);
+    const date = new Date(`${raw}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return "";
+    const label = date.toLocaleDateString("he-IL", {
+      month: "long",
+      year: "numeric",
+    });
+    return `חודש ${label}. `;
+  })();
   switch (deposit.depositType) {
     case "salary_slip":
-      return "תלוש משכורת — לדאוג למזומן";
+      return `${when}הלקוח צריך להכין מזומן עבור תלוש המשכורת.`;
     case "private_transfer":
-      return "הפקדה לחשבון כמשכורת";
+      return `${when}הלקוח צריך להפקיד לחשבון כפעולת משכורת.`;
     case "kollel_scholarship":
       return (deposit.scholarshipDelivery || "cash") === "transfer"
-        ? "מילגה בהעברה — העברה לפי פרטי החשבון של העמותה"
-        : "מילגה במזומן — להכין מזומן וליצור קשר למסירה";
+        ? `${when}הלקוח צריך להעביר לחשבון העמותה לפי פרטי החשבון, ולהעלות אסמכתא.`
+        : `${when}הלקוח צריך להכין מזומן וליצור קשר למסירתו.`;
     case "cash_check":
-      return "לוודא שהופקד צ׳ק או מזומן לחשבון";
+      return `${when}הלקוח צריך לוודא שהופקד מזומן או צ׳ק לחשבון.`;
     default:
-      return depositTypeLabel[deposit.depositType];
+      return `${when}${depositTypeLabel[deposit.depositType]}.`;
   }
 }
 
@@ -215,7 +225,7 @@ export async function buildReminderContent(
       ? buildPayerPrompt(client.name, deposit, association)
       : "",
     followUpLine,
-    situationLabel: situationLabelFor(deposit),
+    situationLabel: situationLabelFor(deposit, targetDateIso),
     depositsLink: depositsPageUrl(),
   };
 

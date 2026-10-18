@@ -472,7 +472,7 @@ export function RemindersTab({
           {toast}
         </div>
       )}
-      <div className="mb-8">
+      <div className="mb-4">
         <h1 className="section-title mb-2">תזכורות</h1>
         <p className="section-subtitle">
           הרישום החודשי, הסינון ושם המעביר נמצאים בהפקדות. כאן נשארות תזכורות
@@ -512,8 +512,8 @@ export function RemindersTab({
           description={`הקטגוריה "${reminderStatusLabel[activeTab]}" ריקה כרגע.`}
         />
       ) : (
-        <div className="grid gap-4">
-          {filtered.map((r, idx) => {
+        <div className="grid gap-2">
+          {filtered.map((r) => {
             const client = clientMap[r.clientId];
             const deposit = depositMap[r.depositId];
             const depositLabel = deposit
@@ -524,11 +524,7 @@ export function RemindersTab({
             return (
               <div
                 key={r.id}
-                className="card card-interactive relative overflow-hidden animate-fade-in-up"
-                style={{
-                  animationDelay: `${Math.min(idx, 8) * 40}ms`,
-                  animationFillMode: "backwards",
-                }}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 relative overflow-hidden"
               >
                 {/* Right accent strip (RTL - visual anchor on right side) */}
                 <span
@@ -670,7 +666,7 @@ export function RemindersTab({
                     )}
                   </div>
 
-                  <div className="flex flex-col gap-2 lg:w-64 shrink-0">
+                  <div className="flex flex-row flex-wrap gap-1.5 shrink-0 lg:max-w-sm lg:justify-end">
                     {r.status !== "resolved" && (
                       <>
                         <button
