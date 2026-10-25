@@ -1936,6 +1936,8 @@ function DepositFilesPanel({
   const isPdf = mime.includes("pdf") || (open?.originalName || "").toLowerCase().endsWith(".pdf");
 
   return (
+    <>
+    <div className="fixed inset-0 z-[70]" onClick={onClose} />
     <aside className="fixed bottom-3 left-3 top-16 z-[80] flex w-[280px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
       <header className="flex items-center justify-between gap-2 bg-navy-950 px-3 py-2 text-white">
         <h3 className="truncate text-sm font-bold">אסמכתאות</h3>
@@ -1959,23 +1961,36 @@ function DepositFilesPanel({
                 {note.trim() ? note : "אין טקסט על ההפקדה הזו."}
               </p>
             </div>
-            {open && (
-              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+            {open && (isImage || isPdf) && (
+              <div className="min-h-[220px] flex-1 overflow-hidden rounded-lg border border-slate-200 bg-white">
                 {isImage ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={`/api/uploads/${open.id}`}
                     alt={open.originalName}
-                    className="max-h-40 w-full object-contain bg-slate-100"
+                    className="h-full max-h-[320px] w-full object-contain bg-slate-100"
                   />
-                ) : isPdf ? (
+                ) : (
                   <iframe
                     title={open.originalName}
-                    src={`/api/uploads/${open.id}`}
-                    className="h-40 w-full bg-white"
+                    src={`/api/uploads/${open.id}#toolbar=0`}
+                    className="h-[320px] w-full bg-white"
                   />
-                ) : null}
+                )}
               </div>
+            )}
+            {open && !isImage && !isPdf && (
+              <p className="px-1 text-xs text-slate-500">
+                אין תצוגה מקדימה לסוג הקובץ הזה.
+              </p>
+            )}
+            {open && (
+              <a
+                className="flex items-center justify-center gap-1 rounded-lg bg-navy-950 px-2 py-1.5 text-xs font-bold text-white hover:bg-navy-800"
+                href={`/api/uploads/${open.id}?download=1`}
+              >
+                <Download size={13} /> הורדת הקובץ
+              </a>
             )}
             {files.length === 0 ? (
               <p className="px-1 text-xs text-slate-500">אין קבצים על ההפקדה הזו.</p>
@@ -1983,17 +1998,29 @@ function DepositFilesPanel({
               <ul className="space-y-1">
                 {files.map((f) => (
                   <li key={f.id}>
-                    <button
-                      type="button"
-                      className={`flex w-full items-center justify-between gap-2 rounded-lg border px-2 py-1.5 text-right text-xs font-semibold ${
+                    <div
+                      className={`flex items-center gap-1 rounded-lg border px-1 py-1 ${
                         f.id === openId
-                          ? "border-teal-400 bg-teal-50 text-teal-900"
-                          : "border-slate-200 bg-white text-navy-950"
+                          ? "border-teal-400 bg-teal-50"
+                          : "border-slate-200 bg-white"
                       }`}
-                      onClick={() => setOpenId(f.id)}
                     >
-                      <span className="truncate">{f.originalName}</span>
-                    </button>
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 truncate px-1 text-right text-xs font-semibold text-navy-950"
+                        onClick={() => setOpenId(f.id)}
+                      >
+                        {f.originalName}
+                      </button>
+                      <a
+                        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-navy-800 hover:bg-white"
+                        href={`/api/uploads/${f.id}?download=1`}
+                        title="הורדה"
+                        aria-label={`הורדת ${f.originalName}`}
+                      >
+                        <Download size={13} />
+                      </a>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -2002,5 +2029,6 @@ function DepositFilesPanel({
         )}
       </div>
     </aside>
+    </>
   );
 }

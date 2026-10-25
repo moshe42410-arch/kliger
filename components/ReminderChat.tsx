@@ -116,6 +116,9 @@ export function ReminderChat({
       }
       onClick={drawer ? undefined : onClose}
     >
+      {drawer && (
+        <div className="fixed inset-0 z-[70]" onClick={onClose} />
+      )}
       <div
         className={
           drawer
@@ -388,16 +391,26 @@ function MessageBubble({
           {message.body}
         </div>
         {uploadId && (
-          <a
-            className={`mt-1 inline-flex items-center gap-1 underline ${
-              isOut ? "text-white" : "text-teal-700"
-            }`}
-            href={`/api/uploads/${uploadId}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <UploadIcon size={12} /> {uploadName}
-          </a>
+          <span className="mt-1 flex flex-wrap items-center gap-2">
+            <a
+              className={`inline-flex items-center gap-1 underline ${
+                isOut ? "text-white" : "text-teal-700"
+              }`}
+              href={`/api/uploads/${uploadId}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <UploadIcon size={12} /> {uploadName}
+            </a>
+            <a
+              className={`inline-flex items-center gap-1 underline ${
+                isOut ? "text-white" : "text-navy-800"
+              }`}
+              href={`/api/uploads/${uploadId}?download=1`}
+            >
+              הורדה
+            </a>
+          </span>
         )}
 
         <div className="text-[10px] mt-1.5 opacity-70 text-left">{time}</div>

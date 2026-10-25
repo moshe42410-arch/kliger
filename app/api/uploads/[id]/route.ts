@@ -5,17 +5,47 @@ import { getBlobBytes } from "@/lib/blob-storage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 60;
+
+function sniffContentType(
+  name: string,
+  mime: string | null,
+  buf: Buffer
+): string {
+  const given = (mime || "").toLowerCase();
+  if (given && given !== "application/octet-stream") return given;
+  const lower = name.toLowerCase();
+  const head = buf.subarray(0, 12);
+  if (lower.endsWith(".pdf") || head.subarray(0, 4).toString() === "%PDF") {
+    return "application/pdf";
+  }
+  if (lower.endsWith(".png") || head.subarray(0, 4).toString("hex") === "89504e47") {
+    return "image/png";
+  }
+  if (
+    lower.endsWith(".jpg") ||
+    lower.endsWith(".jpeg") ||
+    head.subarray(0, 3).toString("hex") === "ffd8ff"
+  ) {
+    return "image/jpeg";
+  }
+  if (lower.endsWith(".webp") || head.subarray(0, 4).toString() === "RIFF") {
+    return "image/webp";
+  }
+  if (lower.endsWith(".gif") || head.subarray(0, 3).toString() === "GIF") {
+    return "image/gif";
+  }
+  return given || "application/octet-stream";
+}
 
 /**
  * Serves a client-uploaded document (attachment) back to the advisor.
  * Auth: the advisor who owns the upload only.
  *
- * Behavior:
- *  - If `filename` in DB is a full URL (Vercel Blob) — 302 redirect to it.
- *  - Otherwise (local dev) — stream bytes from local uploads dir.
- *
- * Query flags:
- *  - `?download=1` sets Content-Disposition to attachment.
+ * Always streams the bytes itself, with Content-Disposition: inline,
+ * so a PDF or image can render in the side panel. A blob redirect
+ * makes the browser download the file instead.
+ * `?download=1` switches the disposition to attachment.
  */
 export async function GET(
   req: NextRequest,
@@ -37,37 +67,29 @@ export async function GET(
     }
 
     const asDownload = req.nextUrl.searchParams.get("download") === "1";
+    let buf: Buffer | null = null;
 
     if (row.filename.startsWith("http")) {
-      if (!asDownload) {
-        return NextResponse.redirect(row.filename, 302);
-      }
-      // For download-mode with blob URL: proxy through so we can set Content-Disposition
       const upstream = await fetch(row.filename);
       if (!upstream.ok) {
         return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
       }
-      const buf = Buffer.from(await upstream.arrayBuffer());
-      return new NextResponse(new Uint8Array(buf), {
-        headers: {
-          "Content-Type": row.mime_type || "application/octet-stream",
-          "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(row.original_name)}`,
-        },
-      });
+      buf = Buffer.from(await upstream.arrayBuffer());
+    } else {
+      buf = await getBlobBytes(row.filename);
     }
-
-    // Local dev — read from disk
-    const buf = await getBlobBytes(row.filename);
     if (!buf) return NextResponse.json({ error: "לא נמצא" }, { status: 404 });
 
-    const headers: Record<string, string> = {
-      "Content-Type": row.mime_type || "application/octet-stream",
-    };
-    if (asDownload) {
-      headers["Content-Disposition"] =
-        `attachment; filename*=UTF-8''${encodeURIComponent(row.original_name)}`;
-    }
-    return new NextResponse(new Uint8Array(buf), { headers });
+    const contentType = sniffContentType(row.original_name, row.mime_type, buf);
+    const disposition = asDownload ? "attachment" : "inline";
+    return new NextResponse(new Uint8Array(buf), {
+      headers: {
+        "Content-Type": contentType,
+        "Content-Disposition": `${disposition}; filename*=UTF-8''${encodeURIComponent(row.original_name)}`,
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, max-age=60",
+      },
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: msg }, { status: 500 });
