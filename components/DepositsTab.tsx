@@ -49,6 +49,7 @@ export type DepositRowActivity = {
   files: number;
   messages: number;
   incoming: number;
+  note?: boolean;
 };
 
 interface FormState {
@@ -1257,7 +1258,8 @@ export function DepositsTab({
                             const rowKey = rem ? rem.id : d.id;
                             const act = rem ? rowActivity[rem.id] : undefined;
                             const fileCount = act?.files || 0;
-                            const hasNote = !!(rem?.clientResponse || "").trim();
+                            const hasNote =
+                              !!(rem?.clientResponse || "").trim() || !!act?.note;
                             const docsHot = fileCount > 0 || hasNote;
                             const incoming = act?.incoming || 0;
                             const messageCount = act?.messages || 0;
@@ -1415,7 +1417,11 @@ export function DepositsTab({
                                           ? "יש אסמכתא או הודעה מהלקוח"
                                           : "מסמכים על ההפקדה"
                                       }
-                                      onClick={() => rem && setFilesReminder(rem)}
+                                      onClick={() => {
+                                        if (!rem) return;
+                                        setChatReminder(null);
+                                        setFilesReminder(rem);
+                                      }}
                                     >
                                       <FileText size={14} />
                                       {fileCount > 0 && (
@@ -1439,7 +1445,11 @@ export function DepositsTab({
                                           ? "יש הודעה שמחכה"
                                           : "צ׳אט על ההפקדה"
                                       }
-                                      onClick={() => rem && setChatReminder(rem)}
+                                      onClick={() => {
+                                        if (!rem) return;
+                                        setFilesReminder(null);
+                                        setChatReminder(rem);
+                                      }}
                                     >
                                       <MessageSquare size={14} />
                                       {(incoming > 0 || messageCount > 0) && (
@@ -1865,6 +1875,7 @@ export function DepositsTab({
       )}
       {chatReminder && (
         <ReminderChat
+          variant="drawer"
           reminder={chatReminder}
           client={
             clientMap[
@@ -1894,10 +1905,11 @@ function DepositFilesPanel({
   onClose: () => void;
 }) {
   const [files, setFiles] = useState<
-    Array<{ id: string; originalName: string; uploadedAt: string }>
+    Array<{ id: string; originalName: string; mimeType?: string | null }>
   >([]);
   const [note, setNote] = useState(reminder.clientResponse || "");
   const [loading, setLoading] = useState(true);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1905,8 +1917,10 @@ function DepositFilesPanel({
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
-        setFiles(Array.isArray(data.uploads) ? data.uploads : []);
+        const list = Array.isArray(data.uploads) ? data.uploads : [];
+        setFiles(list);
         setNote(typeof data.note === "string" ? data.note : "");
+        if (list[0]?.id) setOpenId(list[0].id);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -1916,54 +1930,77 @@ function DepositFilesPanel({
     };
   }, [reminder.id]);
 
+  const open = files.find((f) => f.id === openId) || null;
+  const mime = (open?.mimeType || "").toLowerCase();
+  const isImage = mime.startsWith("image/");
+  const isPdf = mime.includes("pdf") || (open?.originalName || "").toLowerCase().endsWith(".pdf");
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal max-w-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-lg font-bold text-navy-950">
-            אסמכתאות על ההפקדה
-          </h3>
-          <button type="button" className="btn-ghost" onClick={onClose}>
-            סגור
-          </button>
-        </div>
+    <aside className="fixed bottom-3 left-3 top-16 z-[80] flex w-[280px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <header className="flex items-center justify-between gap-2 bg-navy-950 px-3 py-2 text-white">
+        <h3 className="truncate text-sm font-bold">אסמכתאות</h3>
+        <button
+          type="button"
+          className="rounded-md p-1 text-white hover:bg-white/15"
+          onClick={onClose}
+          aria-label="סגור"
+        >
+          <X size={16} />
+        </button>
+      </header>
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-slate-50 p-2">
         {loading ? (
-          <p className="text-sm text-slate-500">טוען...</p>
+          <p className="px-1 py-4 text-center text-xs text-slate-500">טוען...</p>
         ) : (
-          <div className="space-y-3">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="mb-1 text-xs font-bold text-slate-500">
-                מה שהלקוח כתב
-              </p>
-              <p className="whitespace-pre-wrap text-sm text-navy-950">
+          <>
+            <div className="rounded-lg border border-slate-200 bg-white p-2">
+              <p className="mb-1 text-[10px] font-bold text-slate-500">מה שהלקוח כתב</p>
+              <p className="whitespace-pre-wrap text-xs leading-5 text-navy-950">
                 {note.trim() ? note : "אין טקסט על ההפקדה הזו."}
               </p>
             </div>
+            {open && (
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                {isImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`/api/uploads/${open.id}`}
+                    alt={open.originalName}
+                    className="max-h-40 w-full object-contain bg-slate-100"
+                  />
+                ) : isPdf ? (
+                  <iframe
+                    title={open.originalName}
+                    src={`/api/uploads/${open.id}`}
+                    className="h-40 w-full bg-white"
+                  />
+                ) : null}
+              </div>
+            )}
             {files.length === 0 ? (
-              <p className="text-sm text-slate-500">אין קבצים על ההפקדה הזו.</p>
+              <p className="px-1 text-xs text-slate-500">אין קבצים על ההפקדה הזו.</p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="space-y-1">
                 {files.map((f) => (
                   <li key={f.id}>
-                    <a
-                      className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-navy-950 hover:bg-slate-50"
-                      href={`/api/uploads/${f.id}`}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      type="button"
+                      className={`flex w-full items-center justify-between gap-2 rounded-lg border px-2 py-1.5 text-right text-xs font-semibold ${
+                        f.id === openId
+                          ? "border-teal-400 bg-teal-50 text-teal-900"
+                          : "border-slate-200 bg-white text-navy-950"
+                      }`}
+                      onClick={() => setOpenId(f.id)}
                     >
-                      <span>{f.originalName}</span>
-                      <span className="text-xs text-slate-500">פתיחה</span>
-                    </a>
+                      <span className="truncate">{f.originalName}</span>
+                    </button>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
+          </>
         )}
       </div>
-    </div>
+    </aside>
   );
 }

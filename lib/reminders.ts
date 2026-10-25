@@ -1056,7 +1056,15 @@ export async function logMessage(opts: LogMessageOptions): Promise<Message> {
 export async function getMessagesFor(reminderId: string): Promise<Message[]> {
   const sql = getSql();
   const rows = await sql`
-    SELECT * FROM messages WHERE reminder_id = ${reminderId} ORDER BY created_at ASC
+    SELECT m.*
+    FROM messages m
+    JOIN reminders src ON src.id = ${reminderId}
+    JOIN reminders r ON r.id = m.reminder_id
+      AND r.owner_id = src.owner_id
+      AND r.deposit_id = src.deposit_id
+      AND COALESCE(NULLIF(r.month_bucket, ''), LEFT(r.target_date, 7))
+        = COALESCE(NULLIF(src.month_bucket, ''), LEFT(src.target_date, 7))
+    ORDER BY m.created_at ASC
   `;
   return (rows as MessageRow[]).map(parseMessage);
 }

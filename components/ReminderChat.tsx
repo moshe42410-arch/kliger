@@ -25,12 +25,14 @@ export function ReminderChat({
   deposit,
   onClose,
   onChanged,
+  variant = "modal",
 }: {
   reminder: Reminder;
   client: Client | null;
   deposit: Deposit | null;
   onClose: () => void;
   onChanged?: () => void;
+  variant?: "modal" | "drawer";
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,26 +105,53 @@ export function ReminderChat({
 
   const depositLabel = deposit ? depositTypeLabel[deposit.depositType] : "";
 
+  const drawer = variant === "drawer";
+
   return (
-    <div className="modal-backdrop !items-stretch sm:!items-center !p-0 sm:!p-4" onClick={onClose}>
+    <div
+      className={
+        drawer
+          ? undefined
+          : "modal-backdrop !items-stretch sm:!items-center !p-0 sm:!p-4"
+      }
+      onClick={drawer ? undefined : onClose}
+    >
       <div
-        className="modal !max-w-3xl !p-0 overflow-hidden flex flex-col !rounded-none sm:!rounded-3xl !max-h-none sm:!max-h-[90vh] w-full h-[100dvh] sm:h-[min(86vh,800px)]"
+        className={
+          drawer
+            ? "fixed bottom-3 left-3 top-16 z-[80] flex w-[280px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            : "modal !max-w-3xl !p-0 overflow-hidden flex flex-col !rounded-none sm:!rounded-3xl !max-h-none sm:!max-h-[90vh] w-full h-[100dvh] sm:h-[min(86vh,800px)]"
+        }
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-navy-950/8 bg-cream-100 flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3 flex-1 min-w-0">
-            <div className="hidden sm:flex p-2.5 rounded-xl bg-navy-50 text-navy-700 shrink-0 border border-navy-100">
-              <MessageSquare size={22} />
-            </div>
+        <div
+          className={
+            drawer
+              ? "flex items-center justify-between gap-2 bg-navy-950 px-3 py-2 text-white"
+              : "px-4 sm:px-6 py-3 sm:py-4 border-b border-navy-950/8 bg-cream-100 flex items-start justify-between gap-3"
+          }
+        >
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            {!drawer && (
+              <div className="hidden sm:flex p-2.5 rounded-xl bg-navy-50 text-navy-700 shrink-0 border border-navy-100">
+                <MessageSquare size={22} />
+              </div>
+            )}
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-lg font-heading font-bold text-navy-950 truncate">
-                  צ&apos;אט עם {client?.name || "לקוח"}
+                <h2
+                  className={
+                    drawer
+                      ? "truncate text-sm font-bold text-white"
+                      : "text-lg font-heading font-bold text-navy-950 truncate"
+                  }
+                >
+                  {client?.name || "לקוח"}
                 </h2>
-                {deposit && (
+                {deposit && !drawer && (
                   <span className="chip chip-blue">{depositLabel}</span>
                 )}
-                {deposit && (
+                {deposit && !drawer && (
                   <span className="chip">
                     {new Intl.NumberFormat("he-IL", {
                       style: "currency",
@@ -132,21 +161,29 @@ export function ReminderChat({
                   </span>
                 )}
               </div>
-              {client && (
+              {client && !drawer && (
                 <div className="text-xs text-navy-600 mt-1 truncate font-medium" dir="ltr">
                   {client.emails.join(", ")}
                 </div>
               )}
             </div>
           </div>
-          <button className="btn-ghost" onClick={onClose}>
-            <X size={18} />
+          <button
+            className={drawer ? "rounded-md p-1 text-white hover:bg-white/15" : "btn-ghost"}
+            onClick={onClose}
+            aria-label="סגור"
+          >
+            <X size={16} />
           </button>
         </div>
 
         <div
           ref={scrollerRef}
-          className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 bg-gradient-to-b from-cream-100/60 to-cream-200/40"
+          className={
+            drawer
+              ? "min-h-0 flex-1 space-y-2 overflow-y-auto bg-slate-50 px-2 py-2"
+              : "flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 bg-gradient-to-b from-cream-100/60 to-cream-200/40"
+          }
         >
           {loading ? (
             <div className="text-center text-navy-500 py-8">טוען הודעות...</div>
@@ -158,35 +195,52 @@ export function ReminderChat({
               שליחת מייל או הקלטת תגובת לקוח יופיעו כאן.
             </div>
           ) : (
-            messages.map((m) => <MessageBubble key={m.id} message={m} clientName={client?.name} />)
+            messages.map((m) => (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                clientName={client?.name}
+                compact={drawer}
+              />
+            ))
           )}
         </div>
 
-        <div className="border-t border-navy-950/8 bg-white p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="flex flex-col sm:flex-row gap-2 mb-3">
+        <div
+          className={
+            drawer
+              ? "border-t border-slate-200 bg-white p-2"
+              : "border-t border-navy-950/8 bg-white p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+          }
+        >
+          <div className={drawer ? "mb-1.5 flex gap-1" : "flex flex-col sm:flex-row gap-2 mb-3"}>
             <button
-              className={`flex-1 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+              className={`flex-1 rounded-md font-semibold transition-all flex items-center justify-center gap-1 ${
+                drawer ? "px-2 py-1 text-[11px]" : "px-3 py-2.5 rounded-lg text-sm gap-2"
+              } ${
                 composeMode === "email"
                   ? "bg-navy-950 text-white"
                   : "bg-cream-100 text-navy-700 border border-navy-950/10 hover:border-navy-950/30"
               }`}
               onClick={() => setComposeMode("email")}
             >
-              <Mail size={14} /> שלח מייל ללקוח
+              <Mail size={12} /> {drawer ? "מייל" : "שלח מייל ללקוח"}
             </button>
             <button
-              className={`flex-1 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+              className={`flex-1 rounded-md font-semibold transition-all flex items-center justify-center gap-1 ${
+                drawer ? "px-2 py-1 text-[11px]" : "px-3 py-2.5 rounded-lg text-sm gap-2"
+              } ${
                 composeMode === "record"
                   ? "bg-navy-950 text-white"
                   : "bg-cream-100 text-navy-700 border border-navy-950/10 hover:border-navy-950/30"
               }`}
               onClick={() => setComposeMode("record")}
             >
-              <Inbox size={14} /> הקלט תגובה מהלקוח
+              <Inbox size={12} /> {drawer ? "רישום" : "הקלט תגובה מהלקוח"}
             </button>
           </div>
 
-          {composeMode === "email" && (
+          {composeMode === "email" && !drawer && (
             <input
               className="input mb-2 text-sm"
               value={subject}
@@ -198,7 +252,7 @@ export function ReminderChat({
           <div className="flex gap-2">
             <textarea
               className="textarea flex-1 text-sm"
-              rows={3}
+              rows={drawer ? 2 : 3}
               value={body}
               onChange={(e) => setBody(e.target.value)}
               onKeyDown={(e) => {
@@ -208,9 +262,13 @@ export function ReminderChat({
                 }
               }}
               placeholder={
-                composeMode === "email"
-                  ? "כתוב מייל ללקוח... (Ctrl+Enter לשליחה)"
-                  : "כתוב מה הלקוח אמר בטלפון / בוואטסאפ / בפגישה..."
+                drawer
+                  ? composeMode === "email"
+                    ? "הודעה..."
+                    : "מה הלקוח אמר..."
+                  : composeMode === "email"
+                    ? "כתוב מייל ללקוח... (Ctrl+Enter לשליחה)"
+                    : "כתוב מה הלקוח אמר בטלפון / בוואטסאפ / בפגישה..."
               }
             />
             <button
@@ -223,12 +281,12 @@ export function ReminderChat({
             </button>
           </div>
 
-          {composeMode === "record" && (
+          {composeMode === "record" && !drawer && (
             <div className="mt-2 text-xs text-navy-600">
               תגובת לקוח שתוקלד כאן תסמן את התזכורת ל&quot;ממתין לטיפול יועץ&quot; - ללא שליחת מייל.
             </div>
           )}
-          {composeMode === "email" && (
+          {composeMode === "email" && !drawer && (
             <div className="mt-2 text-xs text-navy-600">
               המייל יישלח אל {client?.emails.join(", ") || "כתובות הלקוח"}.
             </div>
@@ -248,9 +306,11 @@ export function ReminderChat({
 function MessageBubble({
   message,
   clientName,
+  compact = false,
 }: {
   message: Message;
   clientName?: string;
+  compact?: boolean;
 }) {
   const isOut = message.direction === "out";
   const isIn = message.direction === "in";
@@ -273,15 +333,15 @@ function MessageBubble({
     );
   }
 
-  const isUpload =
-    isIn &&
-    message.metadata &&
-    (message.metadata as Record<string, unknown>).type === "upload";
+  const meta = (message.metadata || {}) as Record<string, unknown>;
+  const isUpload = isIn && meta.type === "upload";
+  const uploadId = typeof meta.uploadId === "string" ? meta.uploadId : "";
+  const uploadName = typeof meta.filename === "string" ? meta.filename : "קובץ";
 
   return (
     <div className={`flex ${isOut ? "justify-start" : "justify-end"}`}>
       <div
-        className={`max-w-[78%] rounded-2xl px-4 py-3 shadow-sm ${
+        className={`${compact ? "max-w-[92%] rounded-xl px-2 py-1.5" : "max-w-[78%] rounded-2xl px-4 py-3"} shadow-sm ${
           isOut
             ? "bg-gradient-to-br from-teal-500 to-teal-700 border border-teal-600 text-white"
             : "bg-white border border-gold-400/40 text-navy-950"
@@ -324,9 +384,21 @@ function MessageBubble({
           </div>
         )}
 
-        <div className="text-sm whitespace-pre-wrap leading-6">
+        <div className={`${compact ? "text-xs leading-5" : "text-sm leading-6"} whitespace-pre-wrap`}>
           {message.body}
         </div>
+        {uploadId && (
+          <a
+            className={`mt-1 inline-flex items-center gap-1 underline ${
+              isOut ? "text-white" : "text-teal-700"
+            }`}
+            href={`/api/uploads/${uploadId}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <UploadIcon size={12} /> {uploadName}
+          </a>
+        )}
 
         <div className="text-[10px] mt-1.5 opacity-70 text-left">{time}</div>
 

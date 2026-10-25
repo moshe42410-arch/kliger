@@ -87,26 +87,43 @@ export default async function DepositsPage() {
   }
 
   const fileRows = (await sql`
-    SELECT reminder_id, COUNT(*)::int AS c
-    FROM uploads WHERE owner_id = ${ownerId}
-    GROUP BY reminder_id
-  `) as Array<{ reminder_id: string; c: number }>;
+    SELECT src.id AS reminder_id,
+      COUNT(u.id)::int AS files,
+      MAX(CASE WHEN NULLIF(BTRIM(r.client_response), '') IS NOT NULL THEN 1 ELSE 0 END)::int AS note
+    FROM reminders src
+    JOIN reminders r
+      ON r.owner_id = src.owner_id
+     AND r.deposit_id = src.deposit_id
+     AND COALESCE(NULLIF(r.month_bucket, ''), LEFT(r.target_date, 7))
+       = COALESCE(NULLIF(src.month_bucket, ''), LEFT(src.target_date, 7))
+    LEFT JOIN uploads u ON u.reminder_id = r.id
+    WHERE src.owner_id = ${ownerId} AND src.phase = 'primary'
+    GROUP BY src.id
+  `) as Array<{ reminder_id: string; files: number; note: number }>;
   const msgRows = (await sql`
-    SELECT reminder_id,
-      COUNT(*)::int AS c,
-      SUM(CASE WHEN direction = 'in' THEN 1 ELSE 0 END)::int AS incoming
-    FROM messages WHERE owner_id = ${ownerId}
-    GROUP BY reminder_id
+    SELECT src.id AS reminder_id,
+      COUNT(m.id)::int AS c,
+      SUM(CASE WHEN m.direction = 'in' THEN 1 ELSE 0 END)::int AS incoming
+    FROM reminders src
+    JOIN reminders r
+      ON r.owner_id = src.owner_id
+     AND r.deposit_id = src.deposit_id
+     AND COALESCE(NULLIF(r.month_bucket, ''), LEFT(r.target_date, 7))
+       = COALESCE(NULLIF(src.month_bucket, ''), LEFT(src.target_date, 7))
+    JOIN messages m ON m.reminder_id = r.id
+    WHERE src.owner_id = ${ownerId} AND src.phase = 'primary'
+    GROUP BY src.id
   `) as Array<{ reminder_id: string; c: number; incoming: number }>;
   const rowActivity: Record<
     string,
-    { files: number; messages: number; incoming: number }
+    { files: number; messages: number; incoming: number; note: boolean }
   > = {};
   for (const r of fileRows) {
     rowActivity[r.reminder_id] = {
-      files: Number(r.c) || 0,
+      files: Number(r.files) || 0,
       messages: 0,
       incoming: 0,
+      note: Number(r.note) > 0,
     };
   }
   for (const r of msgRows) {
@@ -114,6 +131,7 @@ export default async function DepositsPage() {
       files: 0,
       messages: 0,
       incoming: 0,
+      note: false,
     };
     cur.messages = Number(r.c) || 0;
     cur.incoming = Number(r.incoming) || 0;

@@ -33,6 +33,9 @@ data/
 # --- User uploads (dev only) ---
 uploads/
 !uploads/.gitkeep
+# The download route lives in a folder named uploads. Keep that code in git.
+!app/api/uploads/
+!app/api/uploads/**
 
 # --- Logs ---
 *.log
