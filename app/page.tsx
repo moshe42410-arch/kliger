@@ -176,7 +176,7 @@ export default async function Home() {
       value: waitingAssociation,
       icon: Building2,
       color: "blue",
-      href: "/reminders?status=waiting_association",
+      href: "/deposits?tab=pending",
       hint: "הועבר לעמותה",
     },
     action_pending: {
@@ -235,8 +235,8 @@ export default async function Home() {
       value: snoozed,
       icon: Pause,
       color: "gold",
-      href: "/reminders?status=snoozed",
-      hint: "תזכורות שנדחו",
+      href: "/deposits",
+      hint: "הפקדות פתוחות",
     },
     carried_over: {
       id: "carried_over",
@@ -244,7 +244,7 @@ export default async function Home() {
       value: carriedOver,
       icon: AlertCircle,
       color: "rose",
-      href: "/reminders?status=carried_over",
+      href: "/deposits?tab=pending",
       hint: "גלישה מחודשים קודמים",
     },
     resolved: {
@@ -428,9 +428,6 @@ export default async function Home() {
           </Link>
           <Link href="/associations" className="btn-secondary">
             <Building2 size={18} /> עמותות
-          </Link>
-          <Link href="/reminders" className="btn-secondary">
-            <BellRing size={18} /> תזכורות
           </Link>
         </div>
       </div>

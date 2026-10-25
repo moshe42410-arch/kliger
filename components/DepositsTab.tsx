@@ -13,6 +13,9 @@ import {
   Search,
   Download,
   GripVertical,
+  ChevronDown,
+  FileText,
+  MessageSquare,
 } from "lucide-react";
 import type {
   Association,
@@ -40,6 +43,13 @@ import {
   type DepositDocBucket,
 } from "@/lib/deposit-doc-buckets";
 import { listMonthDocReminders } from "@/lib/deposit-doc-reminders";
+import { ReminderChat } from "@/components/ReminderChat";
+
+export type DepositRowActivity = {
+  files: number;
+  messages: number;
+  incoming: number;
+};
 
 interface FormState {
   id?: string;
@@ -344,12 +354,14 @@ export function DepositsTab({
   associations,
   reminderMeta,
   monthReminders = [],
+  rowActivity = {},
 }: {
   initialDeposits: Deposit[];
   clients: Client[];
   associations: Association[];
   reminderMeta: Record<string, { sends: number; lastSent: string | null }>;
   monthReminders?: Reminder[];
+  rowActivity?: Record<string, DepositRowActivity>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -377,6 +389,9 @@ export function DepositsTab({
   } | null>(null);
   const [dragging, setDragging] = useState(false);
   const [dropTarget, setDropTarget] = useState<DepositDocBucket | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [chatReminder, setChatReminder] = useState<Reminder | null>(null);
+  const [filesReminder, setFilesReminder] = useState<Reminder | null>(null);
 
   const clientMap = useMemo(() => {
     const m: Record<string, Client> = {};
@@ -389,6 +404,23 @@ export function DepositsTab({
     associations.forEach((a) => (m[a.id] = a));
     return m;
   }, [associations]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("kliger-deposit-groups");
+      if (raw) setCollapsed(JSON.parse(raw) as Record<string, boolean>);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  function toggleGroup(key: string) {
+    setCollapsed((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      localStorage.setItem("kliger-deposit-groups", JSON.stringify(next));
+      return next;
+    });
+  }
 
   useEffect(() => {
     const tab = searchParams?.get("tab");
@@ -1064,6 +1096,7 @@ export function DepositsTab({
               : [{ bucket: "", rows: section.rows }];
             const tone = SECTION_TONE[section.key] || SECTION_TONE.archive;
             const isOver = dropTarget === section.key;
+            const isCollapsed = !!collapsed[section.key] && !isOver;
             return (
               <section
                 key={section.key}
@@ -1113,18 +1146,28 @@ export function DepositsTab({
                       : `border-slate-200 ${tone.bar}`
                   }`}
                 >
-                  <h2
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(section.key)}
                     className={`flex items-center gap-2 font-sans text-base font-bold ${
                       isOver ? "!text-white" : tone.title
                     }`}
+                    aria-expanded={!isCollapsed}
+                    title={isCollapsed ? "פתח קבוצה" : "סגור קבוצה"}
                   >
+                    <ChevronDown
+                      size={16}
+                      className={`transition-transform ${
+                        isCollapsed ? "-rotate-90" : ""
+                      }`}
+                    />
                     <span
                       className={`h-2.5 w-2.5 rounded-full ${
                         isOver ? "bg-white" : tone.dot
                       }`}
                     />
                     {isOver ? `שחרר כאן · ${section.title}` : section.title}
-                  </h2>
+                  </button>
                   <div className="flex items-center gap-2">
                     <a
                       className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${
@@ -1149,7 +1192,7 @@ export function DepositsTab({
                     </span>
                   </div>
                 </header>
-                {section.rows.length === 0 ? (
+                {isCollapsed ? null : section.rows.length === 0 ? (
                   <p className="px-4 py-6 text-center text-sm text-slate-500">
                     {dragging
                       ? `שחרר כאן כדי להעביר אל ${section.title}`
@@ -1212,6 +1255,12 @@ export function DepositsTab({
                                 ? `${depositTypeShortLabel[d.depositType]} · ${scholarshipDeliveryLabel[d.scholarshipDelivery || "cash"]}`
                                 : depositTypeShortLabel[d.depositType];
                             const rowKey = rem ? rem.id : d.id;
+                            const act = rem ? rowActivity[rem.id] : undefined;
+                            const fileCount = act?.files || 0;
+                            const hasNote = !!(rem?.clientResponse || "").trim();
+                            const docsHot = fileCount > 0 || hasNote;
+                            const incoming = act?.incoming || 0;
+                            const messageCount = act?.messages || 0;
                             return (
                               <tr
                                 key={rowKey}
@@ -1353,6 +1402,58 @@ export function DepositsTab({
                                 </td>
                                 <td className="px-3 py-1.5">
                                   <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      className={`relative inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-30 ${
+                                        docsHot
+                                          ? "bg-teal-100 text-teal-800 ring-1 ring-teal-400"
+                                          : "text-slate-400 hover:bg-slate-100"
+                                      }`}
+                                      disabled={!rem}
+                                      title={
+                                        docsHot
+                                          ? "יש אסמכתא או הודעה מהלקוח"
+                                          : "מסמכים על ההפקדה"
+                                      }
+                                      onClick={() => rem && setFilesReminder(rem)}
+                                    >
+                                      <FileText size={14} />
+                                      {fileCount > 0 && (
+                                        <span className="absolute -top-1 -left-1 min-w-[14px] rounded-full bg-teal-600 px-1 text-[9px] font-bold leading-4 text-white">
+                                          {fileCount}
+                                        </span>
+                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={`relative inline-flex h-7 w-7 items-center justify-center rounded-md disabled:opacity-30 ${
+                                        incoming > 0
+                                          ? "bg-amber-100 text-amber-800 ring-1 ring-amber-400"
+                                          : messageCount > 0
+                                            ? "bg-teal-100 text-teal-800 ring-1 ring-teal-400"
+                                            : "text-slate-400 hover:bg-slate-100"
+                                      }`}
+                                      disabled={!rem}
+                                      title={
+                                        incoming > 0
+                                          ? "יש הודעה שמחכה"
+                                          : "צ׳אט על ההפקדה"
+                                      }
+                                      onClick={() => rem && setChatReminder(rem)}
+                                    >
+                                      <MessageSquare size={14} />
+                                      {(incoming > 0 || messageCount > 0) && (
+                                        <span
+                                          className={`absolute -top-1 -left-1 min-w-[14px] rounded-full px-1 text-[9px] font-bold leading-4 text-white ${
+                                            incoming > 0
+                                              ? "bg-amber-600"
+                                              : "bg-teal-600"
+                                          }`}
+                                        >
+                                          {incoming > 0 ? incoming : messageCount}
+                                        </span>
+                                      )}
+                                    </button>
                                     <button
                                       type="button"
                                       className={`h-7 rounded-full px-2 text-[11px] font-bold ${
@@ -1753,6 +1854,116 @@ export function DepositsTab({
           </div>
         </div>
       )}
+      {filesReminder && (
+        <DepositFilesPanel
+          reminder={filesReminder}
+          onClose={() => {
+            setFilesReminder(null);
+            router.refresh();
+          }}
+        />
+      )}
+      {chatReminder && (
+        <ReminderChat
+          reminder={chatReminder}
+          client={
+            clientMap[
+              deposits.find((d) => d.id === chatReminder.depositId)?.clientId ||
+                ""
+            ] || null
+          }
+          deposit={
+            deposits.find((d) => d.id === chatReminder.depositId) || null
+          }
+          onClose={() => {
+            setChatReminder(null);
+            router.refresh();
+          }}
+          onChanged={() => router.refresh()}
+        />
+      )}
+    </div>
+  );
+}
+
+function DepositFilesPanel({
+  reminder,
+  onClose,
+}: {
+  reminder: Reminder;
+  onClose: () => void;
+}) {
+  const [files, setFiles] = useState<
+    Array<{ id: string; originalName: string; uploadedAt: string }>
+  >([]);
+  const [note, setNote] = useState(reminder.clientResponse || "");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/reminders/${reminder.id}/files`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setFiles(Array.isArray(data.uploads) ? data.uploads : []);
+        setNote(typeof data.note === "string" ? data.note : "");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reminder.id]);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        className="modal max-w-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-lg font-bold text-navy-950">
+            אסמכתאות על ההפקדה
+          </h3>
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            סגור
+          </button>
+        </div>
+        {loading ? (
+          <p className="text-sm text-slate-500">טוען...</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="mb-1 text-xs font-bold text-slate-500">
+                מה שהלקוח כתב
+              </p>
+              <p className="whitespace-pre-wrap text-sm text-navy-950">
+                {note.trim() ? note : "אין טקסט על ההפקדה הזו."}
+              </p>
+            </div>
+            {files.length === 0 ? (
+              <p className="text-sm text-slate-500">אין קבצים על ההפקדה הזו.</p>
+            ) : (
+              <ul className="space-y-2">
+                {files.map((f) => (
+                  <li key={f.id}>
+                    <a
+                      className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-navy-950 hover:bg-slate-50"
+                      href={`/api/uploads/${f.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span>{f.originalName}</span>
+                      <span className="text-xs text-slate-500">פתיחה</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

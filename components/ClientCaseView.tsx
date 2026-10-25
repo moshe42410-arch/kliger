@@ -15,7 +15,6 @@ import {
   Phone,
   Save,
   Upload,
-  Bell,
   Plus,
   Trash2,
   Pencil,
@@ -641,9 +640,6 @@ export function ClientCaseView({ initialClient }: Props) {
           </button>
           <Link href={`/deposits?newClientId=${client.id}`} className="btn-primary">
             <Plus size={16} strokeWidth={1.75} /> הפקדה חדשה
-          </Link>
-          <Link href={`/reminders?clientId=${client.id}`} className="btn-secondary">
-            <Bell size={16} strokeWidth={1.75} /> תזכורות
           </Link>
         </div>
       </section>

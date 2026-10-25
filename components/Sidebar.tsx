@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import {
   Users,
   Banknote,
-  BellRing,
   LayoutDashboard,
   Mail,
   Building2,
@@ -35,13 +34,6 @@ const mainNav: NavItem[] = [
   { href: "/contacts", label: "אנשי קשר", icon: ContactRound },
   { href: "/deposits", label: "הפקדות", icon: Banknote },
   { href: "/associations", label: "עמותות", icon: Building2 },
-  {
-    href: "/reminders",
-    label: "תזכורות",
-    icon: BellRing,
-    getBadge: (c) => c.waitingAdvisor + c.carriedOver,
-    badgeTone: "red",
-  },
 ];
 
 const panelStyle: CSSProperties = {

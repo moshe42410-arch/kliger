@@ -360,8 +360,13 @@ export async function ensureRemindersForDeposit(
     const dim = daysInMonth(normY, normM + 1);
     const occ = new Date(normY, normM, Math.min(deposit.dayOfMonth, dim));
     const o = startOfDay(occ);
-    if (o < startDay) continue;
     if (endDay && o > endDay) continue;
+    const startedThisMonth =
+      startDay.getFullYear() === o.getFullYear() &&
+      startDay.getMonth() === o.getMonth();
+    // גם אם יום ההפקדה בחודש כבר עבר, וההפקדה נפתחה אחר כך באותו חודש —
+    // עדיין נפתחת שורת החודש עם התאריך שלה.
+    if (o < startDay && !startedThisMonth) continue;
     candidateOccs.push(occ);
   }
 
@@ -1446,7 +1451,7 @@ export async function sendAdvisorPendingDigestForUser(userId: string): Promise<{
   };
 
   const baseUrl = process.env.APP_URL || "";
-  const reminderLink = baseUrl ? `${baseUrl}/reminders` : "/reminders";
+  const reminderLink = baseUrl ? `${baseUrl}/deposits` : "/deposits";
 
   const digestParts: string[] = [];
   if (groups.actionPending.length) {

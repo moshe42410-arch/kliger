@@ -121,8 +121,8 @@ export const TEMPLATE_VARIABLES: TemplateVar[] = [
   },
   {
     key: "remindersLink",
-    label: "קישור לתזכורות",
-    example: "https://kliger.vercel.app/reminders",
+    label: "קישור להפקדות",
+    example: "https://kliger.vercel.app/deposits",
   },
   {
     key: "clientEmail",

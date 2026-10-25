@@ -36,8 +36,11 @@ export function occurrenceForCalendarMonth(
   );
   const endDay = deposit.endDate ? startOfDay(parseISO(deposit.endDate)) : null;
   const occ = occInMonth(deposit.dayOfMonth, now.getFullYear(), now.getMonth());
-  if (occ < startDay) return null;
   if (endDay && occ > endDay) return null;
+  const startedThisMonth =
+    startDay.getFullYear() === occ.getFullYear() &&
+    startDay.getMonth() === occ.getMonth();
+  if (occ < startDay && !startedThisMonth) return null;
   return occ;
 }
 

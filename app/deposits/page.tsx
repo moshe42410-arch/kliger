@@ -86,6 +86,40 @@ export default async function DepositsPage() {
     monthReminders.push(...listMonthDocReminders(byDeposit[d.id] || []));
   }
 
+  const fileRows = (await sql`
+    SELECT reminder_id, COUNT(*)::int AS c
+    FROM uploads WHERE owner_id = ${ownerId}
+    GROUP BY reminder_id
+  `) as Array<{ reminder_id: string; c: number }>;
+  const msgRows = (await sql`
+    SELECT reminder_id,
+      COUNT(*)::int AS c,
+      SUM(CASE WHEN direction = 'in' THEN 1 ELSE 0 END)::int AS incoming
+    FROM messages WHERE owner_id = ${ownerId}
+    GROUP BY reminder_id
+  `) as Array<{ reminder_id: string; c: number; incoming: number }>;
+  const rowActivity: Record<
+    string,
+    { files: number; messages: number; incoming: number }
+  > = {};
+  for (const r of fileRows) {
+    rowActivity[r.reminder_id] = {
+      files: Number(r.c) || 0,
+      messages: 0,
+      incoming: 0,
+    };
+  }
+  for (const r of msgRows) {
+    const cur = rowActivity[r.reminder_id] || {
+      files: 0,
+      messages: 0,
+      incoming: 0,
+    };
+    cur.messages = Number(r.c) || 0;
+    cur.incoming = Number(r.incoming) || 0;
+    rowActivity[r.reminder_id] = cur;
+  }
+
   return (
     <DepositsTab
       initialDeposits={deposits}
@@ -93,6 +127,7 @@ export default async function DepositsPage() {
       associations={associations}
       reminderMeta={metaMap}
       monthReminders={monthReminders}
+      rowActivity={rowActivity}
     />
   );
 }
