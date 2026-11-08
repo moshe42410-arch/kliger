@@ -90,6 +90,12 @@ export function ensureSchemaExtras(): Promise<void> {
   const sql = getSql();
   schemaExtras = (async () => {
     await sql`ALTER TABLE reminders ADD COLUMN IF NOT EXISTS payer_name TEXT`;
+    await sql`ALTER TABLE reminders ADD COLUMN IF NOT EXISTS association_action_token TEXT`;
+    await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS source_payer_name TEXT`;
+    await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS source_account_holder TEXT`;
+    await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS source_bank TEXT`;
+    await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS source_branch TEXT`;
+    await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS source_amount TEXT`;
     await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_client_responses INTEGER NOT NULL DEFAULT 1`;
     await sql`ALTER TABLE associations ADD COLUMN IF NOT EXISTS handling_queue TEXT NOT NULL DEFAULT 'done'`;
     await sql`
@@ -374,6 +380,11 @@ export interface ClientRow {
   spouse_name: string | null;
   spouse_email: string | null;
   spouse_phone: string | null;
+  source_payer_name?: string | null;
+  source_account_holder?: string | null;
+  source_bank?: string | null;
+  source_branch?: string | null;
+  source_amount?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -403,6 +414,11 @@ export interface Client {
   spouseName: string | null;
   spouseEmail: string | null;
   spousePhone: string | null;
+  sourcePayerName: string | null;
+  sourceAccountHolder: string | null;
+  sourceBank: string | null;
+  sourceBranch: string | null;
+  sourceAmount: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -440,6 +456,11 @@ export function parseClient(row: ClientRow): Client {
     spouseName: row.spouse_name ?? null,
     spouseEmail: row.spouse_email ?? null,
     spousePhone: row.spouse_phone ?? null,
+    sourcePayerName: row.source_payer_name?.trim() || null,
+    sourceAccountHolder: row.source_account_holder?.trim() || null,
+    sourceBank: row.source_bank?.trim() || null,
+    sourceBranch: row.source_branch?.trim() || null,
+    sourceAmount: row.source_amount?.trim() || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -636,6 +657,7 @@ export interface ReminderRow {
   month_bucket: string;
   carried_over: number;
   payer_name?: string | null;
+  association_action_token?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -665,6 +687,7 @@ export interface Reminder {
   monthBucket: string;
   carriedOver: boolean;
   payerName: string | null;
+  associationActionToken: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -695,6 +718,7 @@ export function parseReminder(row: ReminderRow): Reminder {
     monthBucket: row.month_bucket,
     carriedOver: !!row.carried_over,
     payerName: row.payer_name?.trim() || null,
+    associationActionToken: row.association_action_token || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

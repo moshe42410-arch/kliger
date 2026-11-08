@@ -1339,7 +1339,7 @@ export function DepositsTab({
                                     <PayerCell
                                       depositId={d.id}
                                       reminderId={rem?.id}
-                                      value={rem?.payerName || ""}
+                                      value={rem?.payerName || client?.sourcePayerName || ""}
                                       onSaved={(saved) =>
                                         setDocs((prev) => ({
                                           ...prev,

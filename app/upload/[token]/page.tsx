@@ -12,6 +12,7 @@ import {
 } from "@/lib/db";
 import { UploadForm } from "@/components/UploadForm";
 import { depositAsksForPayer, depositTypeLabel } from "@/lib/types";
+import { sourceAccountComplete, sourceAccountOf } from "@/lib/source-account";
 import { AlertCircle, CheckCircle2, Calendar, Banknote, ShieldCheck } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -87,12 +88,11 @@ export default async function UploadPage({
               העלאת אסמכתא
             </h1>
             {client && (
-              <p className="text-navy-700 mb-4 text-fluid-base">
-                שלום{" "}
-                <span className="font-heading font-bold text-navy-950">
-                  {client.name}
-                </span>
-                ,
+              <p
+                dir="rtl"
+                className="mb-4 text-right font-sans text-base leading-7 text-navy-950"
+              >
+                {`שלום ${client.name},`}
               </p>
             )}
 
@@ -124,8 +124,27 @@ export default async function UploadPage({
 
             <UploadForm
               token={params.token}
-              showPayer={!!deposit && depositAsksForPayer(deposit)}
+              showPayer={
+                !!deposit &&
+                (deposit.depositType === "kollel_scholarship" ||
+                  depositAsksForPayer(deposit))
+              }
+              showSource={
+                !!deposit &&
+                !!client &&
+                deposit.depositType === "kollel_scholarship" &&
+                !sourceAccountComplete(sourceAccountOf(client))
+              }
               initialPayerName={reminder.payerName || ""}
+              initialAccountHolder={client?.sourceAccountHolder || ""}
+              initialBank={client?.sourceBank || ""}
+              initialBranch={client?.sourceBranch || ""}
+              initialAmount={
+                client?.sourceAmount ||
+                (deposit
+                  ? String(Math.round(deposit.amount))
+                  : "")
+              }
             />
 
             <div className="mt-6 flex items-center gap-2 text-xs text-navy-600 justify-center">

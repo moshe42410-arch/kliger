@@ -40,11 +40,25 @@ export async function POST(
     const payerField = form.get("payerName");
     const hasPayer = typeof payerField === "string";
     const payerName = hasPayer ? payerField.trim() : "";
+    const accountHolderField = form.get("accountHolder");
+    const bankField = form.get("sourceBank");
+    const branchField = form.get("sourceBranch");
+    const amountField = form.get("sourceAmount");
+    const hasSource =
+      typeof accountHolderField === "string" ||
+      typeof bankField === "string" ||
+      typeof branchField === "string" ||
+      typeof amountField === "string";
+    const accountHolder =
+      typeof accountHolderField === "string" ? accountHolderField.trim() : "";
+    const sourceBank = typeof bankField === "string" ? bankField.trim() : "";
+    const sourceBranch = typeof branchField === "string" ? branchField.trim() : "";
+    const sourceAmount = typeof amountField === "string" ? amountField.trim() : "";
     const messageField = form.get("message");
     const message =
       typeof messageField === "string" ? messageField.trim() : "";
 
-    if (!hasFile && !hasPayer && !message) {
+    if (!hasFile && !hasPayer && !hasSource && !message) {
       return NextResponse.json(
         { error: "יש להעלות קובץ, למלא שם מעביר או לכתוב הודעה" },
         { status: 400 }
@@ -107,6 +121,20 @@ export async function POST(
       });
     }
 
+    if (hasSource || (hasPayer && payerName)) {
+      const now = nowIso();
+      await sql`
+        UPDATE clients
+        SET source_payer_name = COALESCE(NULLIF(${payerName}, ''), source_payer_name),
+            source_account_holder = COALESCE(NULLIF(${accountHolder}, ''), source_account_holder),
+            source_bank = COALESCE(NULLIF(${sourceBank}, ''), source_bank),
+            source_branch = COALESCE(NULLIF(${sourceBranch}, ''), source_branch),
+            source_amount = COALESCE(NULLIF(${sourceAmount}, ''), source_amount),
+            updated_at = ${now}
+        WHERE id = ${reminder.clientId}
+      `;
+    }
+
     const payerChanged = hasPayer && payerName !== (reminder.payerName || "");
     if (payerChanged) {
       const now = nowIso();
@@ -134,6 +162,27 @@ export async function POST(
       });
     }
 
+    const sourceChanged =
+      hasSource &&
+      Boolean(accountHolder || sourceBank || sourceBranch || sourceAmount);
+    if (sourceChanged) {
+      await logMessage({
+        reminderId: reminder.id,
+        direction: "in",
+        subject: "פרטי חשבון להעברה",
+        body: [
+          payerName ? `שם המעביר: ${payerName}` : "",
+          accountHolder ? `שם בעל החשבון: ${accountHolder}` : "",
+          sourceBank ? `בנק: ${sourceBank}` : "",
+          sourceBranch ? `סניף: ${sourceBranch}` : "",
+          sourceAmount ? `סכום: ${sourceAmount}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        metadata: { kind: "source_account" },
+      });
+    }
+
     if (message) {
       const now = nowIso();
       await sql`
@@ -152,11 +201,11 @@ export async function POST(
       });
     }
 
-    if (hasFile || message) {
+    if (hasFile || message || sourceChanged) {
       await setReminderStatus(reminder.id, "waiting_advisor");
     }
 
-    if (!hasFile && !message && !payerChanged) {
+    if (!hasFile && !message && !payerChanged && !sourceChanged) {
       return NextResponse.json({ ok: true });
     }
 

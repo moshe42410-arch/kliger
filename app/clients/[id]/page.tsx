@@ -1,5 +1,5 @@
 import { redirect, notFound } from "next/navigation";
-import { getSql, parseClient, type ClientRow } from "@/lib/db";
+import { ensureSchemaExtras, getSql, parseClient, type ClientRow } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { ClientCaseView } from "@/components/ClientCaseView";
 
@@ -12,6 +12,7 @@ export default async function ClientDetailPage({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  await ensureSchemaExtras();
   const sql = getSql();
   const rows = await sql`
     SELECT * FROM clients WHERE id = ${params.id} AND owner_id = ${user.id}

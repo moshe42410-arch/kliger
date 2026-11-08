@@ -22,6 +22,7 @@ import {
   X,
   Users,
 } from "lucide-react";
+import { ClientSourceAccount } from "@/components/ClientSourceAccount";
 import type {
   Client,
   CaseType,
@@ -629,6 +630,11 @@ export function ClientCaseView({ initialClient }: Props) {
             )}
           </div>
         </div>
+
+        <ClientSourceAccount
+          client={client}
+          onSaved={(next) => setClient(next)}
+        />
 
         <div className="mt-8 pt-6 border-t border-navy-100 flex flex-wrap items-center gap-2">
           <button

@@ -14,13 +14,27 @@ export function UploadForm({
   token,
   showPayer = false,
   initialPayerName = "",
+  showSource = false,
+  initialAccountHolder = "",
+  initialBank = "",
+  initialBranch = "",
+  initialAmount = "",
 }: {
   token: string;
   showPayer?: boolean;
   initialPayerName?: string;
+  showSource?: boolean;
+  initialAccountHolder?: string;
+  initialBank?: string;
+  initialBranch?: string;
+  initialAmount?: string;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [payerName, setPayerName] = useState(initialPayerName);
+  const [accountHolder, setAccountHolder] = useState(initialAccountHolder);
+  const [bank, setBank] = useState(initialBank);
+  const [branch, setBranch] = useState(initialBranch);
+  const [amount, setAmount] = useState(initialAmount);
   const [message, setMessage] = useState("");
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
@@ -54,7 +68,13 @@ export function UploadForm({
   const canSubmit =
     !!file ||
     message.trim().length > 0 ||
-    (showPayer && payerName.trim() !== initialPayerName.trim());
+    (showPayer && payerName.trim() !== initialPayerName.trim()) ||
+    (showSource &&
+      (payerName.trim() !== initialPayerName.trim() ||
+        accountHolder.trim() !== initialAccountHolder.trim() ||
+        bank.trim() !== initialBank.trim() ||
+        branch.trim() !== initialBranch.trim() ||
+        amount.trim() !== initialAmount.trim()));
 
   async function submit() {
     if (!canSubmit) return;
@@ -63,7 +83,13 @@ export function UploadForm({
     try {
       const fd = new FormData();
       if (file) fd.append("file", file);
-      if (showPayer) fd.append("payerName", payerName.trim());
+      if (showPayer || showSource) fd.append("payerName", payerName.trim());
+      if (showSource) {
+        fd.append("accountHolder", accountHolder.trim());
+        fd.append("sourceBank", bank.trim());
+        fd.append("sourceBranch", branch.trim());
+        fd.append("sourceAmount", amount.trim());
+      }
       if (message.trim()) fd.append("message", message.trim());
       const res = await fetch(`/api/upload/${token}`, {
         method: "POST",
@@ -119,7 +145,7 @@ export function UploadForm({
   return (
     <div className="space-y-4">
       {showPayer && (
-        <div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <label className="label" htmlFor="payer-name">
             שם המעביר
           </label>
@@ -128,11 +154,33 @@ export function UploadForm({
             className="input"
             value={payerName}
             onChange={(e) => setPayerName(e.target.value)}
-            placeholder="שם בעל החשבון שממנו יצא הכסף"
+            placeholder="שם המעביר בהעברה הזו"
           />
-          <p className="text-xs text-navy-500 mt-1">
-            אם ההעברה אינה מהחשבון שלך, מלא כאן את שם המעביר לחודש הזה.
+        </div>
+      )}
+      {showSource && (
+        <div className="space-y-3 rounded-2xl border border-gold-300/70 bg-cream-100/60 p-4">
+          <p className="text-sm font-bold text-navy-950">
+            פרטי חשבון להעברת המילגה
           </p>
+          <div>
+            <label className="label" htmlFor="account-holder">שם בעל החשבון</label>
+            <input id="account-holder" className="input" value={accountHolder} onChange={(e) => setAccountHolder(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="label" htmlFor="source-bank">בנק</label>
+              <input id="source-bank" className="input" value={bank} onChange={(e) => setBank(e.target.value)} />
+            </div>
+            <div>
+              <label className="label" htmlFor="source-branch">סניף</label>
+              <input id="source-branch" className="input" value={branch} onChange={(e) => setBranch(e.target.value)} />
+            </div>
+            <div>
+              <label className="label" htmlFor="source-amount">סכום</label>
+              <input id="source-amount" className="input" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </div>
+          </div>
         </div>
       )}
       <div>

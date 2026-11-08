@@ -29,6 +29,13 @@ import {
 import { sendEmail } from "./email";
 import { getBlobBytes } from "./blob-storage";
 import { depositTypeLabel, depositRequiresPayment, depositAsksForPayer, scholarshipDeliveryLabel } from "./types";
+import {
+  PAYER_EACH_TIME_PROMPT,
+  SOURCE_PROMPT,
+  sourceAccountComplete,
+  sourceAccountLines,
+  sourceAccountOf,
+} from "./source-account";
 import { deriveReminderStatusFromDocs } from "./reminder-inbox";
 import { occurrenceForCalendarMonth } from "./deposit-doc-reminders";
 import { isShabbatOrHoliday, isErevChag } from "./shabbat";
@@ -224,6 +231,12 @@ export async function buildReminderContent(
     payerPrompt: scholarshipTransfer
       ? buildPayerPrompt(client.name, deposit, association)
       : "",
+    sourcePrompt:
+      deposit.depositType !== "kollel_scholarship"
+        ? ""
+        : sourceAccountComplete(sourceAccountOf(client))
+          ? PAYER_EACH_TIME_PROMPT
+          : SOURCE_PROMPT,
     followUpLine,
     situationLabel: situationLabelFor(deposit, targetDateIso),
     depositsLink: depositsPageUrl(),
@@ -1169,6 +1182,25 @@ export async function forwardReminderToAssociation(
 
   const typeLabel = depositTypeLabel[ctx.deposit.depositType];
   const targetStr = format(parseISO(ctx.reminder.targetDate), "dd/MM/yyyy");
+  const sql = getSql();
+  let actionToken = ctx.reminder.associationActionToken;
+  if (!actionToken) {
+    actionToken = uuid();
+    await sql`
+      UPDATE reminders
+      SET association_action_token = ${actionToken}
+      WHERE id = ${reminderId} AND association_action_token IS NULL
+    `;
+  }
+  const account = sourceAccountOf({
+    sourcePayerName: ctx.reminder.payerName || ctx.client.sourcePayerName,
+    sourceAccountHolder: ctx.client.sourceAccountHolder,
+    sourceBank: ctx.client.sourceBank,
+    sourceBranch: ctx.client.sourceBranch,
+    sourceAmount: ctx.client.sourceAmount,
+  });
+  const baseUrl = (process.env.APP_URL || "").replace(/\/$/, "");
+  const sourceText = sourceAccountLines(account) || "פרטי חשבון: טרם מולאו";
   const ownerUser = await getUserById(ctx.reminder.ownerId);
   const templates = mergeTemplates(ownerUser?.emailTemplates ?? null);
   const rendered = renderTemplate(templates.association_transfer, {
@@ -1187,7 +1219,14 @@ export async function forwardReminderToAssociation(
     companyName: ownerUser?.companyName || ownerUser?.name || "KLIGER",
   });
   const subject = rendered.subject;
-  const body = rendered.body;
+  const body = `${rendered.body.trim()}
+
+פרטי החשבון שהלקוח מסר:
+${sourceText}
+
+סימון מהעמותה:
+בוצע: ${baseUrl}/association-action/${actionToken}?choice=done
+לא בוצע: ${baseUrl}/association-action/${actionToken}?choice=not`;
 
   const res = await sendEmail({
     to: [ctx.association.email],

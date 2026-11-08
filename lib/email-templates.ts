@@ -140,6 +140,11 @@ export const TEMPLATE_VARIABLES: TemplateVar[] = [
     example: "נא למלא בקישור את שם המעביר…",
   },
   {
+    key: "sourcePrompt",
+    label: "בקשה לפרטי חשבון (רק אם חסרים בכרטיס)",
+    example: "נא למלא בקישור שם מעביר, בעל חשבון, בנק, סניף וסכום. פעם אחת.",
+  },
+  {
     key: "payerName",
     label: "שם המעביר",
     example: "אברהם כהן",
@@ -235,6 +240,7 @@ export const TEMPLATE_META: TemplateMeta[] = [
       "amount",
       "targetDate",
       "uploadUrl",
+      "sourcePrompt",
       "followUpLine",
       "companyName",
       "advisorName",
@@ -255,6 +261,7 @@ export const TEMPLATE_META: TemplateMeta[] = [
       "associationName",
       "accountBlock",
       "payerPrompt",
+      "sourcePrompt",
       "uploadUrl",
       "followUpLine",
       "companyName",
@@ -467,8 +474,10 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
 מילגה בסך {amount} אמורה להיכנס עד {targetDate}.
 יש להכין מזומן וליצור קשר למסירתו.
 
-אחרי המסירה, אפשר להעלות אסמכתא בקישור:
+אחרי המסירה, נא להעלות אסמכתא בקישור:
 {uploadUrl}
+
+{sourcePrompt}
 
 {followUpLine}
 
@@ -492,7 +501,7 @@ export const DEFAULT_TEMPLATES: Record<TemplateId, Template> = {
 אחרי ההעברה, נא להעלות אסמכתא בקישור:
 {uploadUrl}
 
-אם הכסף יוצא מחשבון אחר, נא למלא בקישור גם את שם המעביר.
+{sourcePrompt}
 
 {followUpLine}
 
@@ -760,6 +769,26 @@ const LEGACY_TEMPLATES: Partial<Record<TemplateId, Template[]>> = {
 
 שלום,
 מילגה בסך {amount} אמורה להיכנס עד {targetDate}.
+יש להכין מזומן וליצור קשר למסירתו.
+
+אחרי המסירה, אפשר להעלות אסמכתא בקישור:
+{uploadUrl}
+
+{followUpLine}
+
+אפשר גם להשיב ישירות למייל הזה.
+
+בברכה,
+{companyName}
+{advisorName}
+{advisorPhone}`,
+    },
+    {
+      subject: "מילגה — מזומן בסך {amount}",
+      body: `לכבוד {clientName},
+
+שלום,
+מילגה בסך {amount} אמורה להיכנס עד {targetDate}.
 יש להביא את המזומן מראש.
 
 אחרי שהמזומן הוכן, אפשר להעלות אסמכתא בקישור:
@@ -776,6 +805,29 @@ const LEGACY_TEMPLATES: Partial<Record<TemplateId, Template[]>> = {
     },
   ],
   client_scholarship_transfer: [
+    {
+      subject: "מילגה — העברה בסך {amount}",
+      body: `לכבוד {clientName},
+
+שלום,
+עד {targetDate} יש לבצע העברה בסך {amount} לחשבון העמותה {associationName}, לפי פרטי החשבון המצורפים.
+
+{accountBlock}
+
+אחרי ההעברה, נא להעלות אסמכתא בקישור:
+{uploadUrl}
+
+אם הכסף יוצא מחשבון אחר, נא למלא בקישור גם את שם המעביר.
+
+{followUpLine}
+
+אפשר גם להשיב ישירות למייל הזה.
+
+בברכה,
+{companyName}
+{advisorName}
+{advisorPhone}`,
+    },
     {
       subject: "מילגה — העברה לחשבון העמותה בסך {amount}",
       body: `לכבוד {clientName},

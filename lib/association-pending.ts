@@ -1,3 +1,4 @@
+import { v4 as uuid } from "uuid";
 import {
   currentMonthBucket,
   ensureSchemaExtras,
@@ -6,6 +7,7 @@ import {
   parseAssociation,
   type AssociationRow,
 } from "./db";
+import { sourceAccountLines, sourceAccountOf } from "./source-account";
 import { sendEmail } from "./email";
 import { mergeTemplates, renderTemplate } from "./email-templates";
 import {
@@ -71,6 +73,16 @@ function statusHtml(label: string, on: boolean): string {
   return `<span style="display:inline-block;margin-left:6px;padding:2px 8px;border-radius:999px;background:${bg};color:${color};font-size:12px;font-weight:700;">${esc(label)}: ${on ? "כן" : "לא"}</span>`;
 }
 
+function actionButtons(doneUrl: string, notUrl: string): string {
+  const button = (href: string, label: string, primary: boolean) =>
+    `<a href="${esc(href)}" style="display:inline-block;margin-left:8px;margin-top:8px;padding:8px 14px;border-radius:999px;text-decoration:none;font-size:13px;font-weight:700;${
+      primary
+        ? "background:#1f7a62;color:#ffffff;"
+        : "background:#ffffff;color:#7f1d1d;border:1px solid #b91c1c;"
+    }">${esc(label)}</a>`;
+  return `<div>${button(doneUrl, "בוצע", true)}${button(notUrl, "לא בוצע", false)}</div>`;
+}
+
 function depositCardHtml(row: {
   month: string;
   client: string;
@@ -81,6 +93,9 @@ function depositCardHtml(row: {
   actionDone: boolean;
   paid: boolean;
   needsPay: boolean;
+  source: string;
+  doneUrl: string;
+  notUrl: string;
 }): string {
   const paidLabel = row.needsPay
     ? statusHtml("שולם", row.paid)
@@ -91,8 +106,10 @@ function depositCardHtml(row: {
 <div style="font-size:14px;font-weight:700;color:#0a1932;">${esc(row.month)}</div>
 <div style="margin-top:4px;font-size:14px;color:#0a1932;">${esc(row.client)}</div>
 <div style="margin-top:2px;font-size:13px;color:#5a6a86;">מעביר: ${esc(row.payer)}</div>
+<div style="margin-top:2px;font-size:13px;color:#5a6a86;white-space:pre-line;">${esc(row.source || "פרטי חשבון: טרם מולאו")}</div>
 <div style="margin-top:2px;font-size:13px;color:#5a6a86;">${esc(row.type)} · יעד ${esc(row.target)}</div>
 <div style="margin-top:8px;">${statusHtml("בוצע", row.actionDone)}${paidLabel}</div>
+${actionButtons(row.doneUrl, row.notUrl)}
 </td>
 <td dir="rtl" valign="top" style="padding:12px 14px;text-align:left;white-space:nowrap;font-size:16px;font-weight:700;color:#a67912;">${esc(row.amount)}</td>
 </tr>
@@ -100,15 +117,22 @@ function depositCardHtml(row: {
 }
 
 type PendingRow = {
+  id: string;
   month_bucket: string;
   target_date: string;
   payer_name: string | null;
+  association_action_token: string | null;
   action_done_at: string | null;
   payment_done_at: string | null;
   paid_at: string | null;
   client_name: string;
   amount: number;
   deposit_type: string;
+  source_payer_name: string | null;
+  source_account_holder: string | null;
+  source_bank: string | null;
+  source_branch: string | null;
+  source_amount: string | null;
 };
 
 export async function sendAssociationPendingDigest(opts: {
@@ -133,15 +157,22 @@ export async function sendAssociationPendingDigest(opts: {
   const current = currentMonthBucket();
   const rows = (await sql`
     SELECT
+      r.id,
       r.month_bucket,
       r.target_date,
       r.payer_name,
+      r.association_action_token,
       r.action_done_at,
       r.payment_done_at,
       r.paid_at,
       c.name AS client_name,
       d.amount,
-      d.deposit_type
+      d.deposit_type,
+      c.source_payer_name,
+      c.source_account_holder,
+      c.source_bank,
+      c.source_branch,
+      c.source_amount
     FROM reminders r
     JOIN deposits d ON d.id = r.deposit_id
     JOIN clients c ON c.id = r.client_id
@@ -171,34 +202,60 @@ export async function sendAssociationPendingDigest(opts: {
     };
   }
 
-  const cards = waiting.map((r) => {
+  const baseUrl = (process.env.APP_URL || "").replace(/\/$/, "");
+  const cards = [];
+  for (const r of waiting) {
     const type = r.deposit_type as DepositType;
     const paid = !!(r.payment_done_at || r.paid_at);
     const actionDone = !!r.action_done_at;
     const needsPay = depositRequiresPayment(type);
+    let token = r.association_action_token;
+    if (!token) {
+      token = uuid();
+      await sql`
+        UPDATE reminders
+        SET association_action_token = ${token}
+        WHERE id = ${r.id} AND association_action_token IS NULL
+      `;
+    }
+    const account = sourceAccountOf({
+      sourcePayerName: r.payer_name || r.source_payer_name,
+      sourceAccountHolder: r.source_account_holder,
+      sourceBank: r.source_bank,
+      sourceBranch: r.source_branch,
+      sourceAmount: r.source_amount,
+    });
+    const source = sourceAccountLines(account);
+    const doneUrl = `${baseUrl}/association-action/${token}?choice=done`;
+    const notUrl = `${baseUrl}/association-action/${token}?choice=not`;
     const fields = {
       month: monthLabel(r.month_bucket),
       client: r.client_name || "",
-      payer: r.payer_name || "—",
+      payer: account.payerName || "—",
       amount: formatAmount(Number(r.amount) || 0),
       type: depositTypeLabel[type] || r.deposit_type,
       target: formatDate(r.target_date),
       actionDone,
       paid,
       needsPay,
+      source,
+      doneUrl,
+      notUrl,
     };
     const plain = [
       fields.month,
       `מקבל: ${fields.client}`,
-      `מעביר: ${fields.payer}`,
-      `סכום: ${fields.amount}`,
+      source || "פרטי חשבון: טרם מולאו",
+      `סכום הפקדה: ${fields.amount}`,
       `סוג: ${fields.type}`,
       `תאריך יעד: ${fields.target}`,
       `בוצע: ${actionDone ? "כן" : "לא"}`,
       `שולם: ${needsPay ? (paid ? "כן" : "לא") : "—"}`,
+      `לסימון בוצע: ${doneUrl}`,
+      `לסימון לא בוצע: ${notUrl}`,
     ].join("\n");
-    return { html: depositCardHtml(fields), plain };
-  });
+    cards.push({ html: depositCardHtml(fields), plain });
+  }
   const digestBody = cards.map((c) => c.plain).join("\n\n");
   const digestHtml = cards.map((c) => c.html).join("");
 
