@@ -43,17 +43,18 @@ export async function POST(
     const accountHolderField = form.get("accountHolder");
     const bankField = form.get("sourceBank");
     const branchField = form.get("sourceBranch");
-    const amountField = form.get("sourceAmount");
+    const accountNumberField = form.get("sourceAccountNumber");
     const hasSource =
       typeof accountHolderField === "string" ||
       typeof bankField === "string" ||
       typeof branchField === "string" ||
-      typeof amountField === "string";
+      typeof accountNumberField === "string";
     const accountHolder =
       typeof accountHolderField === "string" ? accountHolderField.trim() : "";
     const sourceBank = typeof bankField === "string" ? bankField.trim() : "";
     const sourceBranch = typeof branchField === "string" ? branchField.trim() : "";
-    const sourceAmount = typeof amountField === "string" ? amountField.trim() : "";
+    const sourceAccountNumber =
+      typeof accountNumberField === "string" ? accountNumberField.trim() : "";
     const messageField = form.get("message");
     const message =
       typeof messageField === "string" ? messageField.trim() : "";
@@ -129,7 +130,7 @@ export async function POST(
             source_account_holder = COALESCE(NULLIF(${accountHolder}, ''), source_account_holder),
             source_bank = COALESCE(NULLIF(${sourceBank}, ''), source_bank),
             source_branch = COALESCE(NULLIF(${sourceBranch}, ''), source_branch),
-            source_amount = COALESCE(NULLIF(${sourceAmount}, ''), source_amount),
+            source_account_number = COALESCE(NULLIF(${sourceAccountNumber}, ''), source_account_number),
             updated_at = ${now}
         WHERE id = ${reminder.clientId}
       `;
@@ -164,7 +165,7 @@ export async function POST(
 
     const sourceChanged =
       hasSource &&
-      Boolean(accountHolder || sourceBank || sourceBranch || sourceAmount);
+      Boolean(accountHolder || sourceBank || sourceBranch || sourceAccountNumber);
     if (sourceChanged) {
       await logMessage({
         reminderId: reminder.id,
@@ -175,7 +176,7 @@ export async function POST(
           accountHolder ? `שם בעל החשבון: ${accountHolder}` : "",
           sourceBank ? `בנק: ${sourceBank}` : "",
           sourceBranch ? `סניף: ${sourceBranch}` : "",
-          sourceAmount ? `סכום: ${sourceAmount}` : "",
+          sourceAccountNumber ? `מספר חשבון: ${sourceAccountNumber}` : "",
         ]
           .filter(Boolean)
           .join("\n"),

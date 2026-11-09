@@ -14,7 +14,7 @@ export function ClientSourceAccount({
   const [accountHolder, setAccountHolder] = useState(client.sourceAccountHolder || "");
   const [bank, setBank] = useState(client.sourceBank || "");
   const [branch, setBranch] = useState(client.sourceBranch || "");
-  const [amount, setAmount] = useState(client.sourceAmount || "");
+  const [accountNumber, setAccountNumber] = useState(client.sourceAccountNumber || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +30,7 @@ export function ClientSourceAccount({
           accountHolder,
           bank,
           branch,
-          amount,
+          accountNumber,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -53,7 +53,7 @@ export function ClientSourceAccount({
         <input className="input" value={accountHolder} onChange={(e) => setAccountHolder(e.target.value)} placeholder="שם בעל החשבון" aria-label="שם בעל החשבון" />
         <input className="input" value={bank} onChange={(e) => setBank(e.target.value)} placeholder="בנק" aria-label="בנק" />
         <input className="input" value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="סניף" aria-label="סניף" />
-        <input className="input" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="סכום" aria-label="סכום" />
+        <input className="input" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="מספר חשבון" aria-label="מספר חשבון" />
       </div>
       <div className="mt-2 flex items-center gap-3">
         <button type="button" className="btn-secondary text-sm" onClick={() => void save()} disabled={saving}>

@@ -3,7 +3,7 @@ export type SourceAccount = {
   accountHolder: string;
   bank: string;
   branch: string;
-  amount: string;
+  accountNumber: string;
 };
 
 export function sourceAccountOf(input: {
@@ -11,20 +11,23 @@ export function sourceAccountOf(input: {
   sourceAccountHolder?: string | null;
   sourceBank?: string | null;
   sourceBranch?: string | null;
-  sourceAmount?: string | null;
+  sourceAccountNumber?: string | null;
 }): SourceAccount {
   return {
     payerName: (input.sourcePayerName || "").trim(),
     accountHolder: (input.sourceAccountHolder || "").trim(),
     bank: (input.sourceBank || "").trim(),
     branch: (input.sourceBranch || "").trim(),
-    amount: (input.sourceAmount || "").trim(),
+    accountNumber: (input.sourceAccountNumber || "").trim(),
   };
 }
 
 export function sourceAccountComplete(account: SourceAccount): boolean {
   return Boolean(
-    account.accountHolder && account.bank && account.branch && account.amount
+    account.accountHolder &&
+      account.bank &&
+      account.branch &&
+      account.accountNumber
   );
 }
 
@@ -34,13 +37,13 @@ export function sourceAccountLines(account: SourceAccount): string {
     account.accountHolder ? `שם בעל החשבון: ${account.accountHolder}` : "",
     account.bank ? `בנק: ${account.bank}` : "",
     account.branch ? `סניף: ${account.branch}` : "",
-    account.amount ? `סכום: ${account.amount}` : "",
+    account.accountNumber ? `מספר חשבון: ${account.accountNumber}` : "",
   ].filter(Boolean);
   return lines.join("\n");
 }
 
 export const SOURCE_PROMPT =
-  "בקישור נא למלא את שם המעביר להעברה הזו. את פרטי החשבון להעברת המילגה — שם בעל החשבון, בנק, סניף וסכום — ממלאים פעם אחת, והם נשמרים בכרטיס.";
+  "בקישור נא למלא את שם המעביר להעברה הזו. את פרטי החשבון להעברת המילגה — שם בעל החשבון, בנק, סניף ומספר חשבון — ממלאים פעם אחת, והם נשמרים בכרטיס.";
 
 export const PAYER_EACH_TIME_PROMPT =
   "נא למלא בקישור את שם המעביר להעברה הזו.";

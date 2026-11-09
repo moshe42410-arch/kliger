@@ -96,6 +96,7 @@ export function ensureSchemaExtras(): Promise<void> {
     await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS source_bank TEXT`;
     await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS source_branch TEXT`;
     await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS source_amount TEXT`;
+    await sql`ALTER TABLE clients ADD COLUMN IF NOT EXISTS source_account_number TEXT`;
     await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_client_responses INTEGER NOT NULL DEFAULT 1`;
     await sql`ALTER TABLE associations ADD COLUMN IF NOT EXISTS handling_queue TEXT NOT NULL DEFAULT 'done'`;
     await sql`
@@ -385,6 +386,7 @@ export interface ClientRow {
   source_bank?: string | null;
   source_branch?: string | null;
   source_amount?: string | null;
+  source_account_number?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -419,6 +421,7 @@ export interface Client {
   sourceBank: string | null;
   sourceBranch: string | null;
   sourceAmount: string | null;
+  sourceAccountNumber: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -461,6 +464,7 @@ export function parseClient(row: ClientRow): Client {
     sourceBank: row.source_bank?.trim() || null,
     sourceBranch: row.source_branch?.trim() || null,
     sourceAmount: row.source_amount?.trim() || null,
+    sourceAccountNumber: row.source_account_number?.trim() || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

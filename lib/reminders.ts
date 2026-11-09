@@ -1197,7 +1197,7 @@ export async function forwardReminderToAssociation(
     sourceAccountHolder: ctx.client.sourceAccountHolder,
     sourceBank: ctx.client.sourceBank,
     sourceBranch: ctx.client.sourceBranch,
-    sourceAmount: ctx.client.sourceAmount,
+    sourceAccountNumber: ctx.client.sourceAccountNumber,
   });
   const baseUrl = (process.env.APP_URL || "").replace(/\/$/, "");
   const sourceText = sourceAccountLines(account) || "פרטי חשבון: טרם מולאו";

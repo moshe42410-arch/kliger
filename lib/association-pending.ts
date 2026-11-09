@@ -132,7 +132,7 @@ type PendingRow = {
   source_account_holder: string | null;
   source_bank: string | null;
   source_branch: string | null;
-  source_amount: string | null;
+  source_account_number: string | null;
 };
 
 export async function sendAssociationPendingDigest(opts: {
@@ -172,7 +172,7 @@ export async function sendAssociationPendingDigest(opts: {
       c.source_account_holder,
       c.source_bank,
       c.source_branch,
-      c.source_amount
+      c.source_account_number
     FROM reminders r
     JOIN deposits d ON d.id = r.deposit_id
     JOIN clients c ON c.id = r.client_id
@@ -223,7 +223,7 @@ export async function sendAssociationPendingDigest(opts: {
       sourceAccountHolder: r.source_account_holder,
       sourceBank: r.source_bank,
       sourceBranch: r.source_branch,
-      sourceAmount: r.source_amount,
+      sourceAccountNumber: r.source_account_number,
     });
     const source = sourceAccountLines(account);
     const doneUrl = `${baseUrl}/association-action/${token}?choice=done`;

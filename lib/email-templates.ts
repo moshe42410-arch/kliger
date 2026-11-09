@@ -142,7 +142,7 @@ export const TEMPLATE_VARIABLES: TemplateVar[] = [
   {
     key: "sourcePrompt",
     label: "בקשה לפרטי חשבון (רק אם חסרים בכרטיס)",
-    example: "נא למלא בקישור שם מעביר, בעל חשבון, בנק, סניף וסכום. פעם אחת.",
+    example: "נא למלא בקישור שם מעביר, בעל חשבון, בנק, סניף ומספר חשבון. פעם אחת.",
   },
   {
     key: "payerName",

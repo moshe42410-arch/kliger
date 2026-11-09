@@ -18,7 +18,7 @@ export function UploadForm({
   initialAccountHolder = "",
   initialBank = "",
   initialBranch = "",
-  initialAmount = "",
+  initialAccountNumber = "",
 }: {
   token: string;
   showPayer?: boolean;
@@ -27,14 +27,14 @@ export function UploadForm({
   initialAccountHolder?: string;
   initialBank?: string;
   initialBranch?: string;
-  initialAmount?: string;
+  initialAccountNumber?: string;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [payerName, setPayerName] = useState(initialPayerName);
   const [accountHolder, setAccountHolder] = useState(initialAccountHolder);
   const [bank, setBank] = useState(initialBank);
   const [branch, setBranch] = useState(initialBranch);
-  const [amount, setAmount] = useState(initialAmount);
+  const [accountNumber, setAccountNumber] = useState(initialAccountNumber);
   const [message, setMessage] = useState("");
   const [uploading, setUploading] = useState(false);
   const [done, setDone] = useState(false);
@@ -74,7 +74,7 @@ export function UploadForm({
         accountHolder.trim() !== initialAccountHolder.trim() ||
         bank.trim() !== initialBank.trim() ||
         branch.trim() !== initialBranch.trim() ||
-        amount.trim() !== initialAmount.trim()));
+        accountNumber.trim() !== initialAccountNumber.trim()));
 
   async function submit() {
     if (!canSubmit) return;
@@ -88,7 +88,7 @@ export function UploadForm({
         fd.append("accountHolder", accountHolder.trim());
         fd.append("sourceBank", bank.trim());
         fd.append("sourceBranch", branch.trim());
-        fd.append("sourceAmount", amount.trim());
+        fd.append("sourceAccountNumber", accountNumber.trim());
       }
       if (message.trim()) fd.append("message", message.trim());
       const res = await fetch(`/api/upload/${token}`, {
@@ -177,8 +177,8 @@ export function UploadForm({
               <input id="source-branch" className="input" value={branch} onChange={(e) => setBranch(e.target.value)} />
             </div>
             <div>
-              <label className="label" htmlFor="source-amount">סכום</label>
-              <input id="source-amount" className="input" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <label className="label" htmlFor="source-account-number">מספר חשבון</label>
+              <input id="source-account-number" className="input" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} />
             </div>
           </div>
         </div>

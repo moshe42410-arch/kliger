@@ -139,12 +139,7 @@ export default async function UploadPage({
               initialAccountHolder={client?.sourceAccountHolder || ""}
               initialBank={client?.sourceBank || ""}
               initialBranch={client?.sourceBranch || ""}
-              initialAmount={
-                client?.sourceAmount ||
-                (deposit
-                  ? String(Math.round(deposit.amount))
-                  : "")
-              }
+              initialAccountNumber={client?.sourceAccountNumber || ""}
             />
 
             <div className="mt-6 flex items-center gap-2 text-xs text-navy-600 justify-center">

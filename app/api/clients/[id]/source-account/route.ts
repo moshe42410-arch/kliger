@@ -26,7 +26,7 @@ export async function POST(
           source_account_holder = ${text(body.accountHolder) || null},
           source_bank = ${text(body.bank) || null},
           source_branch = ${text(body.branch) || null},
-          source_amount = ${text(body.amount) || null},
+          source_account_number = ${text(body.accountNumber) || null},
           updated_at = ${nowIso()}
       WHERE id = ${params.id}
     `;
