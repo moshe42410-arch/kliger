@@ -4,6 +4,7 @@ import {
   ensureSchemaExtras,
   getSql,
   getUserById,
+  nowIso,
   parseAssociation,
   type AssociationRow,
 } from "./db";
@@ -73,14 +74,19 @@ function statusHtml(label: string, on: boolean): string {
   return `<span style="display:inline-block;margin-left:6px;padding:2px 8px;border-radius:999px;background:${bg};color:${color};font-size:12px;font-weight:700;">${esc(label)}: ${on ? "כן" : "לא"}</span>`;
 }
 
-function actionButtons(doneUrl: string, notUrl: string): string {
-  const button = (href: string, label: string, primary: boolean) =>
-    `<a href="${esc(href)}" style="display:inline-block;margin-left:8px;margin-top:8px;padding:8px 14px;border-radius:999px;text-decoration:none;font-size:13px;font-weight:700;${
-      primary
-        ? "background:#1f7a62;color:#ffffff;"
-        : "background:#ffffff;color:#7f1d1d;border:1px solid #b91c1c;"
-    }">${esc(label)}</a>`;
-  return `<div>${button(doneUrl, "בוצע", true)}${button(notUrl, "לא בוצע", false)}</div>`;
+function actionLink(href: string, label: string, primary: boolean): string {
+  return `<a href="${esc(href)}" style="display:inline-block;margin-left:8px;margin-top:8px;padding:8px 14px;border-radius:999px;text-decoration:none;font-size:13px;font-weight:700;${
+    primary
+      ? "background:#1f7a62;color:#ffffff;"
+      : "background:#ffffff;color:#7f1d1d;border:1px solid #b91c1c;"
+  }">${esc(label)}</a>`;
+}
+
+function batchActionsHtml(allUrl: string, partialUrl: string): string {
+  return `<div dir="rtl" style="margin:0 0 14px;text-align:right;direction:rtl;">
+<p style="margin:0 0 4px;font-size:13px;color:#0a1932;">הסימון חל על כל הרשימה במייל הזה.</p>
+${actionLink(allUrl, "הכל בוצע", true)}${actionLink(partialUrl, "חלק לא בוצע", false)}
+</div>`;
 }
 
 function depositCardHtml(row: {
@@ -94,8 +100,6 @@ function depositCardHtml(row: {
   paid: boolean;
   needsPay: boolean;
   source: string;
-  doneUrl: string;
-  notUrl: string;
 }): string {
   const paidLabel = row.needsPay
     ? statusHtml("שולם", row.paid)
@@ -109,7 +113,6 @@ function depositCardHtml(row: {
 <div style="margin-top:2px;font-size:13px;color:#5a6a86;white-space:pre-line;">${esc(row.source || "פרטי חשבון: טרם מולאו")}</div>
 <div style="margin-top:2px;font-size:13px;color:#5a6a86;">${esc(row.type)} · יעד ${esc(row.target)}</div>
 <div style="margin-top:8px;">${statusHtml("בוצע", row.actionDone)}${paidLabel}</div>
-${actionButtons(row.doneUrl, row.notUrl)}
 </td>
 <td dir="rtl" valign="top" style="padding:12px 14px;text-align:left;white-space:nowrap;font-size:16px;font-weight:700;color:#a67912;">${esc(row.amount)}</td>
 </tr>
@@ -121,7 +124,6 @@ type PendingRow = {
   month_bucket: string;
   target_date: string;
   payer_name: string | null;
-  association_action_token: string | null;
   action_done_at: string | null;
   payment_done_at: string | null;
   paid_at: string | null;
@@ -161,7 +163,6 @@ export async function sendAssociationPendingDigest(opts: {
       r.month_bucket,
       r.target_date,
       r.payer_name,
-      r.association_action_token,
       r.action_done_at,
       r.payment_done_at,
       r.paid_at,
@@ -203,21 +204,18 @@ export async function sendAssociationPendingDigest(opts: {
   }
 
   const baseUrl = (process.env.APP_URL || "").replace(/\/$/, "");
+  const batchToken = await createAssociationBatch(
+    opts.ownerId,
+    waiting.map((r) => r.id)
+  );
+  const allUrl = `${baseUrl}/association-batch/${batchToken}?choice=all`;
+  const partialUrl = `${baseUrl}/association-batch/${batchToken}`;
   const cards = [];
   for (const r of waiting) {
     const type = r.deposit_type as DepositType;
     const paid = !!(r.payment_done_at || r.paid_at);
     const actionDone = !!r.action_done_at;
     const needsPay = depositRequiresPayment(type);
-    let token = r.association_action_token;
-    if (!token) {
-      token = uuid();
-      await sql`
-        UPDATE reminders
-        SET association_action_token = ${token}
-        WHERE id = ${r.id} AND association_action_token IS NULL
-      `;
-    }
     const account = sourceAccountOf({
       sourcePayerName: r.payer_name || r.source_payer_name,
       sourceAccountHolder: r.source_account_holder,
@@ -226,8 +224,6 @@ export async function sendAssociationPendingDigest(opts: {
       sourceAccountNumber: r.source_account_number,
     });
     const source = sourceAccountLines(account);
-    const doneUrl = `${baseUrl}/association-action/${token}?choice=done`;
-    const notUrl = `${baseUrl}/association-action/${token}?choice=not`;
     const fields = {
       month: monthLabel(r.month_bucket),
       client: r.client_name || "",
@@ -239,8 +235,6 @@ export async function sendAssociationPendingDigest(opts: {
       paid,
       needsPay,
       source,
-      doneUrl,
-      notUrl,
     };
     const plain = [
       fields.month,
@@ -251,13 +245,16 @@ export async function sendAssociationPendingDigest(opts: {
       `תאריך יעד: ${fields.target}`,
       `בוצע: ${actionDone ? "כן" : "לא"}`,
       `שולם: ${needsPay ? (paid ? "כן" : "לא") : "—"}`,
-      `לסימון בוצע: ${doneUrl}`,
-      `לסימון לא בוצע: ${notUrl}`,
     ].join("\n");
     cards.push({ html: depositCardHtml(fields), plain });
   }
-  const digestBody = cards.map((c) => c.plain).join("\n\n");
-  const digestHtml = cards.map((c) => c.html).join("");
+  const batchPlain = [
+    "הסימון חל על כל הרשימה במייל הזה.",
+    `הכל בוצע: ${allUrl}`,
+    `חלק לא בוצע: ${partialUrl}`,
+  ].join("\n");
+  const digestBody = `${batchPlain}\n\n${cards.map((c) => c.plain).join("\n\n")}`;
+  const digestHtml = `${batchActionsHtml(allUrl, partialUrl)}${cards.map((c) => c.html).join("")}`;
 
   const owner = await getUserById(opts.ownerId);
   const templates = mergeTemplates(owner?.emailTemplates ?? null);
@@ -280,4 +277,82 @@ export async function sendAssociationPendingDigest(opts: {
   });
   if (!res.ok) return { ok: false, error: res.error || "השליחה נכשלה" };
   return { ok: true, count: waiting.length, to: association.email };
+}
+
+export type AssociationBatchItem = {
+  id: string;
+  clientName: string;
+  amount: number;
+  targetDate: string;
+  actionDone: boolean;
+};
+
+export async function createAssociationBatch(
+  ownerId: string,
+  reminderIds: string[]
+): Promise<string> {
+  await ensureSchemaExtras();
+  const token = uuid();
+  const sql = getSql();
+  await sql`
+    INSERT INTO association_action_batches (token, owner_id, reminder_ids, created_at)
+    VALUES (${token}, ${ownerId}, ${JSON.stringify(reminderIds)}, ${nowIso()})
+  `;
+  return token;
+}
+
+export async function loadAssociationBatch(
+  token: string
+): Promise<AssociationBatchItem[] | null> {
+  await ensureSchemaExtras();
+  const sql = getSql();
+  const batches = await sql`
+    SELECT reminder_ids FROM association_action_batches
+    WHERE token = ${token}
+    LIMIT 1
+  `;
+  const raw = (batches[0] as { reminder_ids?: string } | undefined)?.reminder_ids;
+  if (!raw) return null;
+  let ids: string[] = [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    ids = parsed.filter((id): id is string => typeof id === "string" && id.length > 0);
+  } catch {
+    return null;
+  }
+  if (ids.length === 0) return [];
+  const rows: {
+    id: string;
+    action_done_at: string | null;
+    target_date: string;
+    client_name: string;
+    amount: number;
+  }[] = [];
+  for (const id of ids) {
+    const found = await sql`
+      SELECT r.id, r.action_done_at, r.target_date, c.name AS client_name, d.amount
+      FROM reminders r
+      JOIN clients c ON c.id = r.client_id
+      JOIN deposits d ON d.id = r.deposit_id
+      WHERE r.id = ${id}
+      LIMIT 1
+    `;
+    const row = found[0] as (typeof rows)[number] | undefined;
+    if (row) rows.push(row);
+  }
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return ids.flatMap((id) => {
+    const row = byId.get(id);
+    if (!row) return [];
+    return [
+      {
+        id: row.id,
+        clientName: row.client_name || "",
+        amount: Number(row.amount) || 0,
+        targetDate: row.target_date || "",
+        actionDone: !!row.action_done_at,
+      },
+    ];
+  });
 }

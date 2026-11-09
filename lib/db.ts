@@ -105,6 +105,14 @@ export function ensureSchemaExtras(): Promise<void> {
         content BYTEA NOT NULL
       )
     `;
+    await sql`
+      CREATE TABLE IF NOT EXISTS association_action_batches (
+        token TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        reminder_ids TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `;
   })().catch((err) => {
     schemaExtras = null;
     throw err;

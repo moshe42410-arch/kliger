@@ -6,6 +6,7 @@ import { SESSION_COOKIE } from "@/lib/auth-shared";
  * - /login, /api/auth/* (התחברות)
  * - /upload/... — קישור להעלאת אסמכתא של לקוח
  * - /api/upload/... — endpoint העלאה שהלקוח משתמש בו
+ * - /association-action / /association-batch — סימון בוצע מהמייל לעמותה
  * - /api/users/[id]/logo/image — הצגת לוגו בעמוד ההעלאה
  * - נכסים סטטיים (מטופלים דרך matcher)
  */
@@ -14,6 +15,10 @@ const PUBLIC_PREFIXES = [
   "/api/auth/",
   "/upload/",
   "/api/upload/",
+  "/association-action/",
+  "/api/association-action/",
+  "/association-batch/",
+  "/api/association-batch/",
   // Note: לוגו לציבור נגיש דרך /api/users/[id]/logo/image
   "/api/users/",
 ];
