@@ -33,7 +33,6 @@ export function sourceAccountComplete(account: SourceAccount): boolean {
 
 export function sourceAccountLines(account: SourceAccount): string {
   const lines = [
-    account.payerName ? `שם המעביר: ${account.payerName}` : "",
     account.accountHolder ? `שם בעל החשבון: ${account.accountHolder}` : "",
     account.bank ? `בנק: ${account.bank}` : "",
     account.branch ? `סניף: ${account.branch}` : "",

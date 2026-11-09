@@ -1222,7 +1222,7 @@ export async function forwardReminderToAssociation(
   const body = `${rendered.body.trim()}
 
 פרטי החשבון שהלקוח מסר:
-${sourceText}
+${account.payerName ? `מעביר: ${account.payerName}\n` : ""}${sourceText}
 
 סימון מהעמותה:
 בוצע: ${baseUrl}/association-action/${actionToken}?choice=done

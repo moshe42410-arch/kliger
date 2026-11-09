@@ -239,6 +239,7 @@ export async function sendAssociationPendingDigest(opts: {
     const plain = [
       fields.month,
       `מקבל: ${fields.client}`,
+      `מעביר: ${fields.payer}`,
       source || "פרטי חשבון: טרם מולאו",
       `סכום הפקדה: ${fields.amount}`,
       `סוג: ${fields.type}`,
