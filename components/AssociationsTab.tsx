@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
   Building2,
@@ -47,6 +48,8 @@ export function AssociationsTab({
   usage: Record<string, number>;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const focusId = searchParams?.get("focus") || "";
   const [associations, setAssociations] =
     useState<Association[]>(initialAssociations);
   const [showForm, setShowForm] = useState(false);
@@ -55,6 +58,14 @@ export function AssociationsTab({
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!focusId) return;
+    document.getElementById(`association-${focusId}`)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }, [focusId]);
 
   function openCreate() {
     setForm(emptyForm);
@@ -211,13 +222,22 @@ export function AssociationsTab({
               </thead>
               <tbody>
                 {associations.map((a) => (
-                  <tr key={a.id}>
+                  <tr
+                    key={a.id}
+                    id={`association-${a.id}`}
+                    className={focusId === a.id ? "bg-gold-50" : undefined}
+                  >
                     <td className="whitespace-nowrap font-semibold text-navy-950">
                       {a.name}
                       <div className="text-xs font-normal text-slate-500">
-                        {usage[a.id]
-                          ? `משויכת ל-${usage[a.id]} הפקדות`
-                          : "לא משויכת להפקדות"}
+                        <Link
+                          href={`/deposits?associationId=${a.id}`}
+                          className="underline decoration-slate-300 underline-offset-2 hover:text-teal-700"
+                        >
+                          {usage[a.id]
+                            ? `משויכת ל-${usage[a.id]} הפקדות`
+                            : "הפקדות של העמותה"}
+                        </Link>
                         {a.notes ? ` · ${a.notes}` : ""}
                       </div>
                     </td>

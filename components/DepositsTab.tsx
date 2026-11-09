@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
@@ -371,13 +372,17 @@ export function DepositsTab({
     Object.fromEntries(monthReminders.map((r) => [r.id, r]))
   );
   const [nameQuery, setNameQuery] = useState("");
-  const [clientFilter, setClientFilter] = useState("");
+  const [clientFilter, setClientFilter] = useState(
+    () => searchParams?.get("clientId") || ""
+  );
   const [typeFilter, setTypeFilter] = useState("");
   const [payerQuery, setPayerQuery] = useState("");
   const [sortKey, setSortKey] = useState<
     "date" | "client" | "type" | "association" | "payer" | "amount"
   >("date");
-  const [exportAssociationId, setExportAssociationId] = useState("");
+  const [exportAssociationId, setExportAssociationId] = useState(
+    () => searchParams?.get("associationId") || ""
+  );
   const [sendingDigest, setSendingDigest] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -1300,10 +1305,21 @@ export function DepositsTab({
                                   {d.active ? <GripVertical size={15} /> : null}
                                 </td>
                                 <td
-                                  className="px-3 py-1.5 font-semibold text-navy-950 whitespace-nowrap"
+                                  className="px-3 py-1.5 whitespace-nowrap"
                                   title={d.notes || undefined}
                                 >
-                                  {client?.name || "לקוח לא ידוע"}
+                                  {client ? (
+                                    <Link
+                                      href={`/clients/${client.id}`}
+                                      className="font-semibold text-navy-950 underline decoration-gold-400/80 underline-offset-2 hover:text-teal-700"
+                                    >
+                                      {client.name}
+                                    </Link>
+                                  ) : (
+                                    <span className="font-semibold text-navy-950">
+                                      לקוח לא ידוע
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="px-3 py-1.5 whitespace-nowrap">
                                   {monthMark ? (
@@ -1332,7 +1348,16 @@ export function DepositsTab({
                                   {typeText}
                                 </td>
                                 <td className="px-3 py-1.5 whitespace-nowrap text-slate-600">
-                                  {assoc?.name || "—"}
+                                  {assoc ? (
+                                    <Link
+                                      href={`/associations?focus=${assoc.id}`}
+                                      className="underline decoration-slate-300 underline-offset-2 hover:text-teal-700"
+                                    >
+                                      {assoc.name}
+                                    </Link>
+                                  ) : (
+                                    "—"
+                                  )}
                                 </td>
                                 <td className="px-3 py-1.5">
                                   {depositShowsPayerField(d) ? (

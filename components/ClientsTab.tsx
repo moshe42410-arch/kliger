@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -479,6 +480,9 @@ export function ClientsTab({ initialClients }: { initialClients: Client[] }) {
                       </td>
                       <td onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-1">
+                          <Link href={`/deposits?clientId=${c.id}`} className="row-btn">
+                            הפקדות
+                          </Link>
                           <button className="row-btn" onClick={() => openEdit(c)}>
                             <Edit3 size={14} /> עריכה
                           </button>

@@ -16,10 +16,12 @@ export function ClientSourceAccount({
   const [branch, setBranch] = useState(client.sourceBranch || "");
   const [accountNumber, setAccountNumber] = useState(client.sourceAccountNumber || "");
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function save() {
     setSaving(true);
+    setSaved(false);
     setError(null);
     try {
       const res = await fetch(`/api/clients/${client.id}/source-account`, {
@@ -36,6 +38,7 @@ export function ClientSourceAccount({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "השמירה נכשלה");
       onSaved(data);
+      setSaved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -45,20 +48,30 @@ export function ClientSourceAccount({
 
   return (
     <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <p className="mb-2 text-sm font-bold text-navy-950">פרטי חשבון להעברת המילגה</p>
-      <p className="mb-3 text-xs text-slate-500">
-        נשמרים פעם אחת ומצורפים למייל העמותה. שם המעביר נשאל בכל העברה בנפרד.
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <input className="input" value={accountHolder} onChange={(e) => setAccountHolder(e.target.value)} placeholder="שם בעל החשבון" aria-label="שם בעל החשבון" />
-        <input className="input" value={bank} onChange={(e) => setBank(e.target.value)} placeholder="בנק" aria-label="בנק" />
-        <input className="input" value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="סניף" aria-label="סניף" />
-        <input className="input" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} placeholder="מספר חשבון" aria-label="מספר חשבון" />
+      <p className="mb-3 text-sm font-bold text-navy-950">פרטי חשבון להעברת המילגה</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="label" htmlFor="edit-account-holder">שם בעל החשבון</label>
+          <input id="edit-account-holder" className="input" value={accountHolder} onChange={(e) => { setAccountHolder(e.target.value); setSaved(false); }} />
+        </div>
+        <div>
+          <label className="label" htmlFor="edit-source-bank">בנק</label>
+          <input id="edit-source-bank" className="input" value={bank} onChange={(e) => { setBank(e.target.value); setSaved(false); }} />
+        </div>
+        <div>
+          <label className="label" htmlFor="edit-source-branch">סניף</label>
+          <input id="edit-source-branch" className="input" value={branch} onChange={(e) => { setBranch(e.target.value); setSaved(false); }} />
+        </div>
+        <div>
+          <label className="label" htmlFor="edit-source-account">מספר חשבון</label>
+          <input id="edit-source-account" className="input" value={accountNumber} onChange={(e) => { setAccountNumber(e.target.value); setSaved(false); }} />
+        </div>
       </div>
-      <div className="mt-2 flex items-center gap-3">
+      <div className="mt-3 flex items-center gap-3">
         <button type="button" className="btn-secondary text-sm" onClick={() => void save()} disabled={saving}>
           {saving ? "שומר..." : "שמירת פרטי חשבון"}
         </button>
+        {saved && <span className="text-xs font-bold text-teal-700">נשמר</span>}
         {error && <span className="text-xs text-red-600">{error}</span>}
       </div>
     </div>

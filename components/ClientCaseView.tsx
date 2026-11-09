@@ -644,6 +644,9 @@ export function ClientCaseView({ initialClient }: Props) {
           >
             {editing ? "סגור עריכה" : "עריכת רקע תיק"}
           </button>
+          <Link href={`/deposits?clientId=${client.id}`} className="btn-secondary">
+            <Banknote size={16} strokeWidth={1.75} /> הפקדות של הלקוח
+          </Link>
           <Link href={`/deposits?newClientId=${client.id}`} className="btn-primary">
             <Plus size={16} strokeWidth={1.75} /> הפקדה חדשה
           </Link>
